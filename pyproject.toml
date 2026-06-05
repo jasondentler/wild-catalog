@@ -36,6 +36,9 @@ dev = [
     "pytest>=8.2,<9.0",
     "pytest-cov>=5.0,<8.0",
     "ruff>=0.6,<1.0",
+    "pre-commit",
+    "conventional-pre-commit",
+    "commitizen",
 ]
 
 [tool.hatch.build.targets.wheel]

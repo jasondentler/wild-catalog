@@ -1,4 +1,4 @@
-.PHONY: all clean venv install lint lint-fix test test-fast check-prereqs serve pr
+.PHONY: all clean venv install install-hooks lint lint-fix test test-fast check-prereqs serve pr
 
 # 1. Detect Operating System and set path/variable rules
 ifeq ($(OS),Windows_NT)
@@ -18,7 +18,7 @@ else
 endif
 
 # Default target when you just run 'make'
-all: clean venv install lint test
+all: clean venv install install-hooks lint test
 
 # 2. Pre-flight check for system requirements
 check-prereqs:
@@ -52,6 +52,9 @@ install:
 	$(VENV_BIN)/python -m pip install --upgrade pip
 	$(VENV_BIN)/python -m pip install -e ".[dev]"
 
+install-hooks:
+	$(VENV_BIN)/pre-commit install --hook-type commit-msg
+
 # 6. Lint everything using Ruff
 lint:
 	$(VENV_BIN)/ruff check .
@@ -77,3 +80,7 @@ pr: install lint test
 	@echo "=========================================================="
 	@echo "✅ SUCCESS: Code looks good! Ready to push your branch."
 	@echo "=========================================================="
+
+# 11. For commit messages, use commitizen 
+commit:
+	$(VENV_BIN)/cz commit
