@@ -73,7 +73,7 @@ test-fast:
 
 # 9. Start the local development API server with auto-reload
 serve:
-	$(VENV_BIN)/uvicorn wild_catalog.api.app:app --reload
+	$(VENV_BIN)/uvicorn wild_catalog.api.app:app --reload --app-dir src
 
 # 10. Pre-PR Validation checklist (Runs updates, linter, and tests)
 pr: install lint test
