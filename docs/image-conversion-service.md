@@ -1,16 +1,58 @@
 [Architecture](./architecture.md)
 
 # Image Conversion Service
-* **Responsibility**: Ingests completely blind binary data streams without needing file extensions. It extracts embedded EXIF metadata (specifically looking for GPS telemetry and original timestamp) to feed downstream logic, and normalizes multi-format image structures into a standard RGB pixel layout.
-* **Technical Stack**: `Pillow`, `rawpy`, `pillow-heif`, `exifread`.
+
+## Responsibility
+
+The image conversion service ingests blind binary image streams, extracts useful metadata, optionally delegates unsupported platform-native formats to an operating-system conversion adapter, and normalizes images to a single RGB layout for downstream detector and classifier plugins.
+
+The rest of the pipeline should not know whether the source image started as JPEG, PNG, or another supported format. Downstream services receive a normalized RGB Pillow image plus metadata.
+
+## Technical Stack
+
+Core Python dependencies:
+
+* `Pillow`
+* `rawpy`
+* `exifread`
+
+Explicitly excluded dependencies:
+
+* `pillow-heif`
+* direct native Python HEIC/HEIF decoding libraries
 
 ## Operation: `process_and_extract_metadata`
-* **Description**: Lazily scans the first few bytes of the incoming binary stream to infer the image type by analyzing format-specific headers. Standard web photos (JPEG, PNG, WebP) are processed using Pillow, while professional RAW files (such as Canon CR3, CR2, NEF, ARW, DNG) are decoded through `rawpy` using automatic white balance variables. 
 
-During ingestion, the service extracts structural EXIF blocks to retrieve the original capture device file name and spatial telemetry coordinates (converting latitude/longitude degrees, minutes, and seconds into floating-point decimals). Finally, it executes an explicit `.convert("RGB")` transform to ensure an uncompromised 3-channel layout is passed to the downstream model layers.
-* **Inputs**:
-  * `file_bytes` (Binary Stream): A raw, unparsed array of the uploaded photograph.
-* **Outputs**:
-  * `normalized_image` (PIL.Image Object): A unified 3-channel (RGB) in-memory pixel matrix compatible with Pillow and downstream models.
-  * `original_filename` (String / None): The source file name assigned by the camera hardware at the moment of capture, extracted from the EXIF dictionary.
-  * `gps_coordinates` (Tuple of Floats / None): A decimal pair structure `(latitude, longitude)` representing the physical telemetry location, ready for the GPS Location Booster.
+### Description
+
+The service reads the incoming file stream, enforces configured size limits, sniffs the format, extracts metadata, and returns an RGB image.
+
+Standard image formats such as JPEG, PNG, and WebP are processed through Pillow. RAW formats are decoded through `rawpy` when supported by the installed runtime.
+
+### Inputs
+
+* `file_stream`: Raw uploaded binary stream.
+* `original_filename`: Client-provided filename used for diagnostics and extension hints only.
+* `exif_override`: Optional request metadata that may override embedded metadata later in the pipeline.
+
+### Outputs
+
+* `normalized_image`: Pillow `Image` in RGB mode.
+* `original_filename_from_exif`: Source filename from EXIF if available.
+* `gps_coordinates`: Decimal `(latitude, longitude)` tuple or `None`.
+* `captured_at`: Capture timestamp or `None`.
+
+## Metadata precedence
+
+The pipeline should apply metadata in this order:
+
+1. Request `exif_override` values.
+2. Metadata extracted from the original upload.
+3. `None`.
+
+## Memory constraints
+
+* Do not keep multiple decoded full-resolution images alive.
+* Stream or spool uploads rather than duplicating large byte arrays where possible.
+* Convert to RGB once.
+* Close temporary Pillow images promptly.

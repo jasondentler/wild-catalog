@@ -1,14 +1,13 @@
 # Contributing to Wild Catalog
 
-Thank you for your interest in contributing to my project! I welcome all contributions, whether it is reporting a bug, improving documentation, or submitting new features.
+Thank you for your interest in contributing to Wild Catalog. Contributions are welcome, including bug reports, documentation improvements, model plugin adapters, tests, and feature work.
 
-To ensure a smooth process for everyone involved, please review the following guidelines.
-
-## 🚀 Getting Started
+## Getting Started
 
 This assumes you have [`git`](https://git-scm.com/) installed and are comfortable working at the terminal.
 
-### 1. Fork and Clone the Project
+### 1. Fork and clone the project
+
 Go to the [Wild Catalog GitHub Repository](https://github.com/jasondentler/wild-catalog) and click the **Fork** button in the top-right corner. This creates a personal copy under your account. 
 
 Clone your fork locally (replace `YOUR_USERNAME` with your actual GitHub username) and enter the directory:
@@ -25,16 +24,15 @@ cd wild-catalog
 > cd wild-catalog
 > ```
 
-### 2. Track the Main Project (Upstream)
-Keep your local fork in sync with future updates from the main repository by adding a remote link to the original project:
+### 2. Track the upstream project
 
 ```bash
 git remote add upstream https://github.com/jasondentler/wild-catalog.git
 ```
 
----
+## Environment setup
 
-## 🛠️ Environment Setup
+Wild Catalog uses Python and Make-based shortcuts for local development. The development runtime should stay aligned with the version range in `pyproject.toml`.
 
 ### 🍏 Option A: macOS Setup
 
@@ -137,6 +135,7 @@ Once your environment is built via the initial [`make`](https://www.gnu.org/soft
 ## 🛠️ Development Workflow
 
 ### Code Style & Linting
+
 I use [Ruff](https://ruff.rs) to enforce code formatting and catch potential issues. Before committing with [`git`](https://git-scm.com/), run the linter shortcut to ensure your code matches the project's style:
 
 ```bash
@@ -177,6 +176,12 @@ make pr
 Write clear, descriptive commit messages. I encourage using [Conventional Commits](https://conventionalcommits.org), for example:
 *   `feat(auth): add JWT token validation`
 *   `fix(routes): resolve 500 error on GET /users`
+
+A proper commit message can be created using [commitizen](https://commitizen-tools.github.io/commitizen/) by running:
+
+```bash
+make commit
+```
 
 ### 4. Push to Your Fork
 ```bash
