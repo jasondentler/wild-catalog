@@ -632,7 +632,7 @@ Both detector and classifier plugins should use the same device helper.
 
 Device priority:
 
-1. Apple Silicon MPS, unless running inside Docker.
+1. Apple Silicon MPS.
 2. CUDA.
 3. CPU.
 
@@ -640,18 +640,13 @@ Recommended implementation shape:
 
 ```python
 from functools import lru_cache
-from pathlib import Path
 
 import torch
 
 
-def is_running_in_docker() -> bool:
-    return Path("/.dockerenv").exists()
-
-
 @lru_cache(maxsize=1)
 def get_torch_device() -> torch.device:
-    if not is_running_in_docker() and torch.backends.mps.is_available():
+    if torch.backends.mps.is_available():
         return torch.device("mps")
 
     if torch.cuda.is_available():
