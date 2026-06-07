@@ -145,7 +145,7 @@ make lint
 ### Testing
 All contributions require tests to ensure stability and prevent regressions. I use the [pytest](https://pytest.org) framework. 
 
-1. **Write Tests**: Place your tests in the `tests/` directory mirroring the module structure of the codebase.
+1. **Write Tests**: Place tests under `tests/unit/` or `tests/integration/`, mirroring the module structure below that level.
 2. **Run Fast Tests**: Execute the lightweight test suite to ensure everything passes during daily iterations:
    ```bash
    make test-fast

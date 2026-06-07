@@ -133,17 +133,24 @@ src/
       class_index.py
 
 tests/
-  api/
-  conversion/
-  detection/
-  deduplication/
-  cropping/
-  classifier/
-  prior/
-  conditioning/
-  taxonomy/
-  pipeline/
-  performance/
+  unit/
+    api/
+    conversion/
+    detection/
+    deduplication/
+    cropping/
+    classifier/
+    prior/
+    conditioning/
+    taxonomy/
+    pipeline/
+    architecture/
+  integration/
+    conversion/
+    detection/
+    classifier/
+    taxonomy/
+    pipeline/
 ```
 
 Keep the API layer thin. The API gateway should parse HTTP requests, call the
@@ -159,28 +166,29 @@ Use this dependency direction:
 ```text
 api
 → pipeline
-→ conversion
-→ detection
-→ deduplication
-→ cropping
-→ classifier
-→ prior
-→ conditioning
-→ taxonomy
+→ service protocols
+→ service implementations
 → core
 ```
 
-`core` should not import from feature packages.
+`core` is the lowest-level package. It must not import from any Wild Catalog
+feature package.
 
-Feature packages may import shared primitives from `core`.
+The API package owns HTTP, FastAPI, Pydantic request models, response models, and
+multipart serialization.
 
-The pipeline may orchestrate all services.
+The pipeline package owns orchestration. It depends on service protocols, not
+specific model implementations.
 
-The API may depend on the pipeline, but service packages should not depend on the
-API package.
+Detection and classifier packages own model plugin protocols, registries, stubs,
+and concrete adapters.
 
-Avoid circular imports by keeping shared primitives in `core/types.py` and
-feature-owned types in their own packages.
+Service packages must not import from `wild_catalog.api`.
+
+Model-specific plugins must not leak into the API or pipeline.
+
+Add tests in `tests/unit/architecture/test_import_boundaries.py` to enforce
+these rules.
 
 ---
 
@@ -1959,17 +1967,22 @@ Real model tests should be opt-in.
 Recommended test folders:
 
 ```text
-tests/api/
-tests/conversion/
-tests/detection/
-tests/deduplication/
-tests/cropping/
-tests/classifier/
-tests/prior/
-tests/conditioning/
-tests/taxonomy/
-tests/pipeline/
-tests/performance/
+tests/unit/api/
+tests/unit/conversion/
+tests/unit/detection/
+tests/unit/deduplication/
+tests/unit/cropping/
+tests/unit/classifier/
+tests/unit/prior/
+tests/unit/conditioning/
+tests/unit/taxonomy/
+tests/unit/pipeline/
+tests/unit/architecture/
+tests/integration/conversion/
+tests/integration/detection/
+tests/integration/classifier/
+tests/integration/taxonomy/
+tests/integration/pipeline/
 ```
 
 ### Unit tests
