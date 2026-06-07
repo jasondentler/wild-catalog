@@ -1,6 +1,13 @@
 from wild_catalog.classifier.protocols import SpeciesClassifier
+from wild_catalog.classifier.stub import StubSpeciesClassifier
 from wild_catalog.core.config import Settings
 
 
 def build_classifier(settings: Settings) -> SpeciesClassifier:
-    raise NotImplementedError("Classifier registry is not implemented yet.")
+    if settings.classifier_backend == "stub":
+        return StubSpeciesClassifier()
+
+    if settings.classifier_backend == "birder-inat21":
+        raise NotImplementedError("Birder iNat21 classifier backend is not implemented yet.")
+
+    raise ValueError(f"Unknown classifier backend: {settings.classifier_backend}")

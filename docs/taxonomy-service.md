@@ -21,7 +21,7 @@ predictable, and available offline.
 The service uses the iNaturalist Taxonomy DarwinCore Archive:
 
 ```text
-https://www.inaturalist.org/pages/developers
+https://www.inaturalist.org/taxa/inaturalist-taxonomy.dwca.zip
 taxonomy.dwca.zip
 ```
 

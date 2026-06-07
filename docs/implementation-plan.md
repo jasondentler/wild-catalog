@@ -609,7 +609,7 @@ WILD_CATALOG_RANGE_MAP_STORE_PATH=
 WILD_CATALOG_PRIOR_EPSILON=0.01
 WILD_CATALOG_PRIOR_GAMMA=1.0
 
-WILD_CATALOG_TAXONOMY_DWCA_URL=https://www.inaturalist.org/pages/developers
+WILD_CATALOG_TAXONOMY_DWCA_URL=https://www.inaturalist.org/taxa/inaturalist-taxonomy.dwca.zip
 WILD_CATALOG_TAXONOMY_DWCA_PATH=
 WILD_CATALOG_TAXONOMY_STORE_PATH=data/taxonomy
 WILD_CATALOG_TAXONOMY_DEFAULT_LANGUAGE=en-US
@@ -826,6 +826,13 @@ src/wild_catalog/api/dependencies.py
 ```
 
 The API should build services through dependency providers and registries.
+This module is the application composition root: it builds settings, detector
+plugins, classifier plugins, shared services, and the `IdentifyPipeline`.
+Use `@lru_cache(maxsize=1)` so settings and the pipeline are constructed once
+per process.
+
+The pipeline must receive dependencies through its constructor and must not
+construct concrete detector or classifier plugins internally.
 
 ```python
 from functools import lru_cache
@@ -834,9 +841,9 @@ from wild_catalog.classifier.registry import build_classifier
 from wild_catalog.conditioning.service import LogitConditioner
 from wild_catalog.conversion.service import ImageConversionService
 from wild_catalog.core.config import Settings
+from wild_catalog.cropping.service import ImageCropper
 from wild_catalog.deduplication.service import DetectionDeduplicator
 from wild_catalog.detection.registry import build_detector
-from wild_catalog.cropping.service import ImageCropper
 from wild_catalog.pipeline.identify import IdentifyPipeline
 from wild_catalog.prior.service import SpeciesRangePriorService
 from wild_catalog.taxonomy.service import TaxonomyService
@@ -855,16 +862,27 @@ def get_identify_pipeline() -> IdentifyPipeline:
         settings=settings,
         converter=ImageConversionService(settings),
         detector=build_detector(settings),
-        deduplicator=DetectionDeduplicator(settings),
-        cropper=ImageCropper(settings),
+        deduplicator=DetectionDeduplicator(),
+        cropper=ImageCropper(margin_ratio=settings.crop_margin_ratio),
         prior_service=SpeciesRangePriorService(settings),
         classifier=build_classifier(settings),
-        conditioner=LogitConditioner(settings),
+        conditioner=LogitConditioner(
+            gamma=settings.prior_gamma,
+            epsilon=settings.prior_epsilon,
+            top_k=settings.classifier_top_k,
+        ),
         taxonomy_service=TaxonomyService(settings),
     )
+
+
+def clear_dependency_caches() -> None:
+    get_settings.cache_clear()
+    get_identify_pipeline.cache_clear()
 ```
 
 Use FastAPI dependency overrides in tests to inject stub services.
+`get_identify_pipeline()` is fully implemented in Step 8. Multipart response
+building remains a placeholder until Step 18.
 
 ---
 
