@@ -1,4 +1,4 @@
-.PHONY: all clean venv install install-hooks lint lint-fix test test-fast check-prereqs serve pr
+.PHONY: all clean venv install install-hooks license-check lint lint-fix test test-fast check-prereqs serve pr
 
 # 1. Detect Operating System and set path/variable rules
 ifeq ($(OS),Windows_NT)
@@ -18,7 +18,7 @@ else
 endif
 
 # Default target when you just run 'make'
-all: clean venv install install-hooks lint test
+all: clean venv install install-hooks license-check lint test
 
 # 2. Pre-flight check for system requirements
 check-prereqs:
@@ -55,6 +55,9 @@ install:
 install-hooks:
 	$(VENV_BIN)/pre-commit install --hook-type commit-msg
 
+license-check:
+	licensecheck --license Apache-2.0 --zero --show-only-failing
+	
 # 6. Lint everything using Ruff
 lint:
 	$(VENV_BIN)/ruff check .
