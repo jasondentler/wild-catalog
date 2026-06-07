@@ -7,8 +7,22 @@ def test_identify_result_can_contain_identified_objects() -> None:
     prediction = EnrichedPrediction(
         confidence=0.98,
         is_present=True,
-        taxonomy=("Animalia", "Chordata", "Aves"),
-        taxonomy_common_names=("Animals", "Chordates", "Birds"),
+        taxonomy=(
+            "Animalia",
+            "Chordata",
+            "Aves",
+            "Passeriformes",
+            "Corvidae",
+            "Cyanocitta cristata",
+        ),
+        taxonomy_common_names=(
+            "Animals",
+            "Chordates",
+            "Birds",
+            "Perching Birds",
+            "Crows and Jays",
+            "Blue Jay",
+        ),
     )
 
     identified_object = IdentifiedObject(

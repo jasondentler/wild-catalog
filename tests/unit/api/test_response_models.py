@@ -29,8 +29,22 @@ def test_identified_object_response_serializes_api_shape() -> None:
             PredictionResponse(
                 confidence=0.92,
                 is_present=True,
-                taxonomy=["Animalia", "Chordata", "Mammalia"],
-                taxonomy_common_names=["Animals", "Chordates", "Mammals"],
+                taxonomy=[
+                    "Animalia",
+                    "Chordata",
+                    "Aves",
+                    "Passeriformes",
+                    "Corvidae",
+                    "Cyanocitta cristata",
+                ],
+                taxonomy_common_names=[
+                    "Animals",
+                    "Chordates",
+                    "Birds",
+                    "Perching Birds",
+                    "Crows and Jays",
+                    "Blue Jay",
+                ],
             )
         ],
     )
@@ -57,8 +71,22 @@ def test_identified_object_response_serializes_api_shape() -> None:
             {
                 "confidence": 0.92,
                 "is_present": True,
-                "taxonomy": ["Animalia", "Chordata", "Mammalia"],
-                "taxonomy_common_names": ["Animals", "Chordates", "Mammals"],
+                "taxonomy": [
+                    "Animalia",
+                    "Chordata",
+                    "Aves",
+                    "Passeriformes",
+                    "Corvidae",
+                    "Cyanocitta cristata",
+                ],
+                "taxonomy_common_names": [
+                    "Animals",
+                    "Chordates",
+                    "Birds",
+                    "Perching Birds",
+                    "Crows and Jays",
+                    "Blue Jay",
+                ],
             }
         ],
     }
