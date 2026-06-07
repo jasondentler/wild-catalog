@@ -70,7 +70,7 @@ Wild Catalog should process these formats directly in the Python image stack:
 * WebP
 * RAW image formats supported by the configured `rawpy` runtime, including common camera RAW formats such as `.dng`, `.cr3`, `.cr2`, `.nef`, `.arw`, `.orf`, `.rw2`, `.raf`, `.pef`, and similar formats.
 
-Note: Due to patent and license concerns, HEIC / HEIF is not supported at this time.
+HEIC / HEIF files are supported only when an optional platform image conversion adapter is configured. Wild Catalog does not use `pillow-heif` or direct native Python HEIC / HEIF decoding libraries.
 
 ### JSON Request Payload Reference
 

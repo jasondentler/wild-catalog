@@ -2,6 +2,9 @@ from functools import lru_cache
 
 from wild_catalog.classifier.registry import build_classifier
 from wild_catalog.conditioning.service import LogitConditioner
+from wild_catalog.conversion.platform_conversion.registry import (
+    clear_platform_image_converter_cache,
+)
 from wild_catalog.conversion.service import ImageConversionService
 from wild_catalog.core.config import Settings
 from wild_catalog.cropping.service import ImageCropper
@@ -41,3 +44,4 @@ def get_identify_pipeline() -> IdentifyPipeline:
 def clear_dependency_caches() -> None:
     get_settings.cache_clear()
     get_identify_pipeline.cache_clear()
+    clear_platform_image_converter_cache()
