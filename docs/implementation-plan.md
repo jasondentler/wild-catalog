@@ -1,127 +1,280 @@
 # Wild Catalog Implementation Plan
 
-This plan prioritizes maintainability, readability, low memory usage, and warm-path API response times under 500ms where practical. It incorporates the current architectural decisions:
+## Goal
 
-* `ultralytics` is not used.
-* `pillow-heif` is not used.
-* Detector models are pluggable.
-* Classifier models are pluggable.
-* The default planned detector is Grounding DINO with an organism-focused prompt.
+Implement Wild Catalog as a maintainable, readable, low-memory image identification
+API for nature photos.
 
-## 1. Define the performance target
+The system should identify animals, plants, fungi, lichens, and other natural
+subjects in uploaded photographs, return species-level predictions where
+possible, enrich those predictions with taxonomy and localized common names, and
+optionally return cropped detection images.
 
-Target warm-path behavior:
+The implementation should prioritize:
 
-* `GET /health`: under 500ms.
-* `GET /openapi.json`: under 500ms.
-* `POST /identify` with stub plugins: under 500ms.
-* `POST /identify` with real models: under 500ms when models are already loaded, input size is bounded, detections are capped, and crop images are not returned.
+1. Maintainability.
+2. Readability.
+3. Low memory usage.
+4. Stable API contracts.
+5. Pluggable detector and classifier models.
+6. Warm-path API response times under 500ms where practical.
 
-Explicitly outside the strict warm-path target:
+The 500ms target applies to normal warm requests with models and lookup data
+already loaded. It does not apply to first-time model downloads, cold model
+initialization, taxonomy archive compilation, range-map preprocessing, very large
+RAW files, or platform image conversion failures.
 
-* First model download.
-* First model load.
-* Very large RAW conversion.
-* Multipart responses containing many crop images.
+---
 
-## 2. Establish the package structure
+## 1. Establish the package layout
+
+Use the existing `src/` package layout.
 
 Recommended structure:
 
 ```text
-src/wild_catalog/
-  api/
-    app.py
-    dependencies.py
-    errors.py
-    request_models.py
-    response_models.py
-    multipart.py
-    content_negotiation.py
+src/
+  wild_catalog/
+    __init__.py
 
-  core/
-    config.py
-    device.py
-    timing.py
-    types.py
+    api/
+      __init__.py
+      app.py
+      dependencies.py
+      errors.py
+      request_models.py
+      response_models.py
+      multipart.py
+      content_negotiation.py
 
-  conversion/
-    service.py
-    exif.py
-    raw.py
-    standard.py
-    platform_conversion/
+    core/
+      __init__.py
+      config.py
+      device.py
+      timing.py
+      types.py
+
+    conversion/
+      __init__.py
+      service.py
+      exif.py
+      raw.py
+      standard.py
+      format_sniffing.py
+      platform_conversion/
+        __init__.py
+        protocols.py
+        registry.py
+        noop.py
+        macos_sips.py
+        linux_imagemagick.py
+        windows_imagemagick.py
+        windows_wic.py
+
+    detection/
+      __init__.py
       protocols.py
-      macos_sips.py
-      imagemagick.py
-      linux_heif_convert.py
-      windows_wic.py
-      noop.py
+      registry.py
+      types.py
+      policy.py
+      stub.py
+      grounding_dino.py
+      grounding_dino_prompt.py
+      grounding_dino_postprocess.py
 
+    deduplication/
+      __init__.py
+      service.py
+      iou.py
+
+    cropping/
+      __init__.py
+      service.py
+      types.py
+
+    classifier/
+      __init__.py
+      protocols.py
+      registry.py
+      types.py
+      stub.py
+      birder.py
+      transforms.py
+
+    prior/
+      __init__.py
+      protocols.py
+      service.py
+      store.py
+      h3_index.py
+      stub.py
+      types.py
+
+    conditioning/
+      __init__.py
+      service.py
+
+    taxonomy/
+      __init__.py
+      protocols.py
+      service.py
+      store.py
+      dwca.py
+      stub.py
+      types.py
+
+    pipeline/
+      __init__.py
+      identify.py
+      models.py
+
+    data/
+      __init__.py
+      class_index.py
+
+tests/
+  api/
+  conversion/
   detection/
-    protocols.py
-    registry.py
-    types.py
-    stub.py
-    grounding_dino.py
-    prompt.py
-    postprocess.py
-
   deduplication/
-    service.py
-    iou.py
-
   cropping/
-    service.py
-
   classifier/
-    protocols.py
-    registry.py
-    types.py
-    stub.py
-    birder_inat21.py
-    transforms.py
-
   prior/
-    service.py
-    store.py
-    h3_index.py
-    stub.py
-
   conditioning/
-    service.py
-
   taxonomy/
-    service.py
-    store.py
-    stub.py
-
   pipeline/
-    identify.py
-    models.py
-
-  data/
-    class_index.py
+  performance/
 ```
 
-Keep service logic independent of FastAPI. FastAPI should call the pipeline; it should not contain the pipeline.
+Keep the API layer thin. The API gateway should parse HTTP requests, call the
+pipeline, and serialize responses. It should not contain model, cropping, EXIF,
+taxonomy, or range-prior logic.
+
+---
+
+## 2. Define dependency direction
+
+Use this dependency direction:
+
+```text
+api
+→ pipeline
+→ conversion
+→ detection
+→ deduplication
+→ cropping
+→ classifier
+→ prior
+→ conditioning
+→ taxonomy
+→ core
+```
+
+`core` should not import from feature packages.
+
+Feature packages may import shared primitives from `core`.
+
+The pipeline may orchestrate all services.
+
+The API may depend on the pipeline, but service packages should not depend on the
+API package.
+
+Avoid circular imports by keeping shared primitives in `core/types.py` and
+feature-owned types in their own packages.
+
+---
 
 ## 3. Implement shared domain types
 
-Create explicit immutable types for boxes, detections, crops, classifier outputs, prior masks, and predictions.
+Create explicit immutable types for boxes, detections, crops, classifier outputs,
+prior masks, taxonomy records, and predictions.
 
-Recommended examples:
+These types should live close to the part of the system that owns them. Avoid a
+single giant `types.py` file that becomes a dumping ground. Shared types that are
+used across several pipeline stages belong in `src/wild_catalog/core/types.py`.
+Plugin-specific types belong inside their plugin area.
+
+Recommended layout:
+
+```text
+src/wild_catalog/
+  core/
+    types.py
+
+  detection/
+    types.py
+
+  cropping/
+    types.py
+
+  classifier/
+    types.py
+
+  prior/
+    types.py
+
+  taxonomy/
+    types.py
+
+  pipeline/
+    models.py
+```
+
+### `src/wild_catalog/core/types.py`
+
+Use this file for small shared primitives that multiple services need.
 
 ```python
+from dataclasses import dataclass
+
+
 @dataclass(frozen=True, slots=True)
 class BoundingBox:
     xmin: int
     ymin: int
     xmax: int
     ymax: int
+
+    @property
+    def width(self) -> int:
+        return self.xmax - self.xmin
+
+    @property
+    def height(self) -> int:
+        return self.ymax - self.ymin
 ```
 
 ```python
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class GpsCoordinates:
+    latitude: float
+    longitude: float
+```
+
+### `src/wild_catalog/detection/types.py`
+
+Use this file for detector output types. These should be model-agnostic so
+Grounding DINO, a future YOLO variant, OWL-ViT, or another detector can all
+return the same internal shape.
+
+```python
+from dataclasses import dataclass
+from enum import StrEnum
+
+from wild_catalog.core.types import BoundingBox
+
+
+class DetectionCategory(StrEnum):
+    ANIMAL = "animal"
+    PLANT = "plant"
+    FUNGUS = "fungus"
+    LICHEN = "lichen"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True, slots=True)
 class Detection:
     bounding_box: BoundingBox
@@ -131,411 +284,2035 @@ class Detection:
     source: str
 ```
 
-Use frozen dataclasses with `slots=True` for internal pipeline objects to keep memory lower and behavior easier to reason about.
+Example:
+
+```python
+Detection(
+    bounding_box=BoundingBox(xmin=120, ymin=340, xmax=450, ymax=680),
+    confidence=0.84,
+    label="bird",
+    category=DetectionCategory.ANIMAL,
+    source="grounding-dino",
+)
+```
+
+### `src/wild_catalog/cropping/types.py`
+
+Use this file for crop results. The crop service owns margin logic, so it should
+return both the original detection box and the margin-adjusted crop box.
+
+```python
+from dataclasses import dataclass
+
+from PIL import Image
+
+from wild_catalog.core.types import BoundingBox
+from wild_catalog.detection.types import Detection
+
+
+@dataclass(frozen=True, slots=True)
+class CropResult:
+    index: int
+    detection: Detection
+    bounding_box: BoundingBox
+    bounding_box_with_margin: BoundingBox
+    image: Image.Image
+```
+
+### `src/wild_catalog/classifier/types.py`
+
+Use this file for classifier plugin metadata and classifier outputs.
+
+Classifier plugins should expose their class-index metadata because the range
+prior service and taxonomy service must align with the classifier's class order.
+
+```python
+from dataclasses import dataclass
+from typing import Literal, Mapping
+
+import torch
+
+
+@dataclass(frozen=True, slots=True)
+class ClassIndex:
+    id: str
+    taxon_id_by_class_id: Mapping[int, int]
+```
+
+```python
+from dataclasses import dataclass
+from typing import Literal
+
+
+@dataclass(frozen=True, slots=True)
+class ClassifierMetadata:
+    backend: str
+    model_id: str
+    class_count: int
+    class_index_id: str
+    output_type: Literal["logits", "probabilities"]
+    taxonomy_source: str
+```
+
+```python
+from dataclasses import dataclass
+
+import torch
+
+from wild_catalog.classifier.types import ClassIndex
+
+
+@dataclass(frozen=True, slots=True)
+class RawClassifierOutput:
+    logits: torch.Tensor
+    class_index: ClassIndex
+```
+
+```python
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class ClassPrediction:
+    class_id: int
+    confidence: float
+```
+
+### `src/wild_catalog/prior/types.py`
+
+Use this file for geographic prior and presence outputs.
+
+The prior mask must align exactly with the active classifier's class index.
+
+```python
+from dataclasses import dataclass
+
+import torch
+
+
+@dataclass(frozen=True, slots=True)
+class PriorMask:
+    values: torch.Tensor
+    class_index_id: str
+```
+
+```python
+from dataclasses import dataclass
+from typing import Mapping
+
+
+@dataclass(frozen=True, slots=True)
+class PresenceResult:
+    is_present_by_taxon_id: Mapping[int, bool]
+```
+
+Use `is_present`, not `is_endemic`.
+
+`is_present` means the predicted taxon is known, expected, or otherwise
+geographically plausible for the provided location according to the Species
+Range Prior Service.
+
+### `src/wild_catalog/taxonomy/types.py`
+
+Use this file for taxon records and enriched prediction output.
+
+The taxonomy service owns scientific lineage, common names, localization
+fallbacks, and taxonomy drift handling.
+
+```python
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class TaxonRecord:
+    taxon_id: int
+    parent_taxon_id: int | None
+    rank: str
+    scientific_name: str
+    accepted_taxon_id: int | None = None
+```
+
+```python
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class EnrichedPrediction:
+    confidence: float
+    is_present: bool
+    taxonomy: tuple[str, ...]
+    taxonomy_common_names: tuple[str, ...]
+```
+
+### `src/wild_catalog/pipeline/models.py`
+
+Use this file for orchestration-level request and result objects that are not
+HTTP-specific.
+
+FastAPI request and response models should remain in `src/wild_catalog/api/`.
+Pipeline models should represent the result of internal processing before it is
+serialized into JSON or multipart output.
+
+```python
+from dataclasses import dataclass
+
+from PIL import Image
+
+from wild_catalog.core.types import BoundingBox, GpsCoordinates
+from wild_catalog.taxonomy.types import EnrichedPrediction
+
+
+@dataclass(frozen=True, slots=True)
+class IdentifiedObject:
+    bounding_box: BoundingBox
+    bounding_box_with_margin: BoundingBox
+    gps_coordinates: GpsCoordinates | None
+    predictions: tuple[EnrichedPrediction, ...]
+    cropped_image: Image.Image | None = None
+```
+
+```python
+from dataclasses import dataclass
+
+from wild_catalog.pipeline.models import IdentifiedObject
+
+
+@dataclass(frozen=True, slots=True)
+class IdentifyResult:
+    objects: tuple[IdentifiedObject, ...]
+```
+
+## Ownership Rules
+
+Use these ownership rules when deciding where new classes belong:
+
+| Type of class | Folder |
+|---|---|
+| Shared primitives used by many services | `src/wild_catalog/core/` |
+| Detector output and detector metadata | `src/wild_catalog/detection/` |
+| Crop output and crop metadata | `src/wild_catalog/cropping/` |
+| Classifier outputs, logits, class-index metadata | `src/wild_catalog/classifier/` |
+| Geographic prior masks and presence results | `src/wild_catalog/prior/` |
+| Taxon records and enriched predictions | `src/wild_catalog/taxonomy/` |
+| Internal end-to-end pipeline results | `src/wild_catalog/pipeline/` |
+| HTTP request and response models | `src/wild_catalog/api/` |
+
+## Design Rules
+
+1. Prefer `@dataclass(frozen=True, slots=True)` for internal domain types.
+2. Use Pydantic models only at API boundaries.
+3. Keep detector-specific raw outputs inside detector adapters.
+4. Keep classifier-specific raw outputs inside classifier adapters.
+5. Convert plugin-specific outputs into stable Wild Catalog domain types before
+   passing them deeper into the pipeline.
+6. Do not let API models leak into service internals.
+7. Do not let model-specific classes leak into the API response.
+8. Do not store large images, tensors, or byte arrays in long-lived objects.
+9. Use tuples for immutable sequences returned from pipeline-level results.
+10. Keep `is_present` owned by the range/prior layer, even though it is attached
+    to enriched taxonomy predictions for the final response.
+
+---
 
 ## 4. Implement configuration
 
-Create `core/config.py`.
+Create:
 
-Recommended variables:
+```text
+src/wild_catalog/core/config.py
+```
+
+Use one central settings object for runtime configuration.
+
+Recommended settings:
+
+```python
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True, slots=True)
+class Settings:
+    env: str
+
+    max_upload_bytes: int
+    max_image_pixels: int
+    max_detections: int
+    crop_margin_ratio: float
+
+    detector_backend: str
+    classifier_backend: str
+
+    preload_models: bool
+    max_concurrent_identify_requests: int
+
+    enable_platform_image_conversion: bool
+    platform_image_converter: str
+    platform_conversion_timeout_seconds: int
+
+    grounding_dino_model_id: str
+    grounding_dino_prompt: str
+    grounding_dino_box_threshold: float
+    grounding_dino_text_threshold: float
+
+    classifier_batch_size: int
+    classifier_top_k: int
+    classifier_model_cache_path: Path | None
+
+    range_map_store_path: Path | None
+    prior_epsilon: float
+    prior_gamma: float
+
+    taxonomy_dwca_url: str
+    taxonomy_dwca_path: Path | None
+    taxonomy_store_path: Path
+    taxonomy_default_language: str
+```
+
+Recommended environment variables:
 
 ```text
 WILD_CATALOG_ENV=development
+
 WILD_CATALOG_MAX_UPLOAD_BYTES=26214400
 WILD_CATALOG_MAX_IMAGE_PIXELS=24000000
 WILD_CATALOG_MAX_DETECTIONS=8
 WILD_CATALOG_CROP_MARGIN_RATIO=0.12
-WILD_CATALOG_MAX_CONCURRENT_IDENTIFY_REQUESTS=1
 
 WILD_CATALOG_DETECTOR_BACKEND=grounding-dino
-WILD_CATALOG_DETECTOR_MODEL_CACHE_PATH=
-WILD_CATALOG_GROUNDING_DINO_MODEL_ID=
-WILD_CATALOG_GROUNDING_DINO_PROMPT=
-WILD_CATALOG_GROUNDING_DINO_BOX_THRESHOLD=0.25
-WILD_CATALOG_GROUNDING_DINO_TEXT_THRESHOLD=0.25
-
 WILD_CATALOG_CLASSIFIER_BACKEND=birder-inat21
-WILD_CATALOG_SPECIES_CLASSIFIER_MODEL_CACHE_PATH=
-WILD_CATALOG_SPECIES_CLASSIFIER_BATCH_SIZE=8
-WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K=12
+
+WILD_CATALOG_PRELOAD_MODELS=false
+WILD_CATALOG_MAX_CONCURRENT_IDENTIFY_REQUESTS=1
 
 WILD_CATALOG_ENABLE_PLATFORM_IMAGE_CONVERSION=true
 WILD_CATALOG_PLATFORM_IMAGE_CONVERTER=auto
 WILD_CATALOG_PLATFORM_CONVERSION_TIMEOUT_SECONDS=10
-WILD_CATALOG_SIPS_PATH=/usr/bin/sips
-WILD_CATALOG_IMAGEMAGICK_PATH=magick
-WILD_CATALOG_HEIF_CONVERT_PATH=heif-convert
 
-WILD_CATALOG_RANGE_MAP_PATH=
+WILD_CATALOG_GROUNDING_DINO_MODEL_ID=IDEA-Research/grounding-dino-tiny
+WILD_CATALOG_GROUNDING_DINO_BOX_THRESHOLD=0.25
+WILD_CATALOG_GROUNDING_DINO_TEXT_THRESHOLD=0.25
+
+WILD_CATALOG_SPECIES_CLASSIFIER_BATCH_SIZE=8
+WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K=12
+WILD_CATALOG_SPECIES_CLASSIFIER_MODEL_CACHE_PATH=
+
+WILD_CATALOG_RANGE_MAP_STORE_PATH=
 WILD_CATALOG_PRIOR_EPSILON=0.01
 WILD_CATALOG_PRIOR_GAMMA=1.0
-WILD_CATALOG_PRELOAD_MODELS=false
+
+WILD_CATALOG_TAXONOMY_DWCA_URL=https://www.inaturalist.org/pages/developers
+WILD_CATALOG_TAXONOMY_DWCA_PATH=
+WILD_CATALOG_TAXONOMY_STORE_PATH=data/taxonomy
+WILD_CATALOG_TAXONOMY_DEFAULT_LANGUAGE=en-US
 ```
 
-## 5. Implement device selection
+Keep configuration boring and explicit. Avoid hidden defaults scattered across
+service implementations.
 
-Create one shared device helper:
+---
 
-1. Prefer Apple Silicon MPS when available and not inside Docker.
-2. Else prefer CUDA.
-3. Else use CPU.
-4. Cache the result.
+## 5. Implement shared device selection
 
-Detector and classifier plugins should both use this helper.
+Create:
 
-## 6. Implement API skeleton
+```text
+src/wild_catalog/core/device.py
+```
 
-Build:
+Both detector and classifier plugins should use the same device helper.
 
-* `GET /health`
-* `GET /openapi.json`
-* `POST /identify`
+Device priority:
 
-Start with stub detector and classifier plugins. The first working milestone should prove the API contract without real model downloads.
+1. Apple Silicon MPS, unless running inside Docker.
+2. CUDA.
+3. CPU.
 
-## 7. Implement request and response models
-
-Create Pydantic models for:
-
-* `IdentifyRequest`
-* `ExifOverride`
-* `BoundingBoxResponse`
-* `PredictionResponse`
-* `DetectionResponse`
-
-The public response should remain stable even when detector or classifier plugins change.
-
-## 8. Implement image conversion
-
-Implement direct support for:
-
-* JPEG / JPG
-* PNG
-* WebP
-* supported RAW formats through `rawpy`
-
-Rules:
-
-1. Do not add `pillow-heif`.
-2. Do not use `shell=True`.
-3. Use temp directories.
-4. Apply subprocess timeouts.
-5. Enforce upload and pixel limits.
-6. Return helpful unsupported-format errors when conversion is unavailable.
-
-## 9. Implement pluggable detection framework
-
-Define:
+Recommended implementation shape:
 
 ```python
-class ObjectDetector(Protocol):
-    @property
-    def metadata(self) -> DetectorMetadata:
+from functools import lru_cache
+from pathlib import Path
+
+import torch
+
+
+def is_running_in_docker() -> bool:
+    return Path("/.dockerenv").exists()
+
+
+@lru_cache(maxsize=1)
+def get_torch_device() -> torch.device:
+    if not is_running_in_docker() and torch.backends.mps.is_available():
+        return torch.device("mps")
+
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+
+    return torch.device("cpu")
+```
+
+Do not duplicate device-selection logic inside individual model plugins.
+
+---
+
+## 6. Implement API request and response models
+
+Create:
+
+```text
+src/wild_catalog/api/request_models.py
+src/wild_catalog/api/response_models.py
+```
+
+Use Pydantic for API boundary models.
+
+### `src/wild_catalog/api/request_models.py`
+
+```python
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class ExifOverrideRequest(BaseModel):
+    gps_coordinates: str | None = Field(
+        default=None,
+        pattern=r"^-?\d+\.\d+,\s*-?\d+\.\d+$",
+    )
+    captured_at: datetime | None = None
+
+
+class IdentifyRequest(BaseModel):
+    original_filename: str
+    exif_override: ExifOverrideRequest | None = None
+    return_detected_images: bool = False
+    common_name_language: str = "en-US"
+```
+
+### `src/wild_catalog/api/response_models.py`
+
+```python
+from pydantic import BaseModel
+
+
+class BoundingBoxResponse(BaseModel):
+    xmin: int
+    ymin: int
+    xmax: int
+    ymax: int
+    width: int
+    height: int
+
+
+class PredictionResponse(BaseModel):
+    confidence: float
+    is_present: bool
+    taxonomy: list[str]
+    taxonomy_common_names: list[str]
+
+
+class IdentifiedObjectResponse(BaseModel):
+    bounding_box: BoundingBoxResponse
+    bounding_box_with_margin: BoundingBoxResponse
+    gps_coordinates: tuple[float, float] | None
+    predictions: list[PredictionResponse]
+```
+
+The `/identify` JSON response is a list of `IdentifiedObjectResponse`.
+
+---
+
+## 7. Implement the FastAPI app
+
+Create:
+
+```text
+src/wild_catalog/api/app.py
+```
+
+Implement:
+
+```text
+GET /health
+GET /openapi.json
+POST /identify
+```
+
+### `GET /health`
+
+`GET /health` should remain lightweight.
+
+It should not load models, validate range maps, parse taxonomy data, or run the
+image identification pipeline.
+
+Response:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+### `POST /identify`
+
+`POST /identify` should accept multipart form data:
+
+1. An uploaded image file.
+2. A JSON payload form field.
+
+Recommended endpoint shape:
+
+```python
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse, Response
+
+from wild_catalog.api.dependencies import get_identify_pipeline
+from wild_catalog.api.multipart import build_multipart_response
+from wild_catalog.api.request_models import IdentifyRequest
+from wild_catalog.pipeline.identify import IdentifyPipeline
+
+
+app = FastAPI(title="Wild Catalog")
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/identify")
+async def identify(
+    request: Request,
+    image: Annotated[UploadFile, File()],
+    payload: Annotated[str, Form()],
+    pipeline: Annotated[IdentifyPipeline, Depends(get_identify_pipeline)],
+) -> Response:
+    identify_request = IdentifyRequest.model_validate_json(payload)
+
+    result = await run_in_threadpool(
+        pipeline.identify,
+        image.file,
+        identify_request,
+    )
+
+    if identify_request.return_detected_images:
+        return build_multipart_response(result, include_images=True)
+
+    accept_header = request.headers.get("accept")
+    if accept_header and "multipart/mixed" in accept_header:
+        return build_multipart_response(result, include_images=False)
+
+    return JSONResponse(content=result_to_json(result))
+```
+
+Keep the actual conversion from pipeline result to API JSON in a small serializer
+function.
+
+---
+
+## 8. Implement dependency wiring
+
+Create:
+
+```text
+src/wild_catalog/api/dependencies.py
+```
+
+The API should build services through dependency providers and registries.
+
+```python
+from functools import lru_cache
+
+from wild_catalog.classifier.registry import build_classifier
+from wild_catalog.conditioning.service import LogitConditioner
+from wild_catalog.conversion.service import ImageConversionService
+from wild_catalog.core.config import Settings
+from wild_catalog.deduplication.service import DetectionDeduplicator
+from wild_catalog.detection.registry import build_detector
+from wild_catalog.cropping.service import ImageCropper
+from wild_catalog.pipeline.identify import IdentifyPipeline
+from wild_catalog.prior.service import SpeciesRangePriorService
+from wild_catalog.taxonomy.service import TaxonomyService
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings.from_env()
+
+
+@lru_cache(maxsize=1)
+def get_identify_pipeline() -> IdentifyPipeline:
+    settings = get_settings()
+
+    return IdentifyPipeline(
+        settings=settings,
+        converter=ImageConversionService(settings),
+        detector=build_detector(settings),
+        deduplicator=DetectionDeduplicator(settings),
+        cropper=ImageCropper(settings),
+        prior_service=SpeciesRangePriorService(settings),
+        classifier=build_classifier(settings),
+        conditioner=LogitConditioner(settings),
+        taxonomy_service=TaxonomyService(settings),
+    )
+```
+
+Use FastAPI dependency overrides in tests to inject stub services.
+
+---
+
+## 9. Implement image conversion
+
+Create:
+
+```text
+src/wild_catalog/conversion/service.py
+src/wild_catalog/conversion/format_sniffing.py
+src/wild_catalog/conversion/exif.py
+src/wild_catalog/conversion/standard.py
+src/wild_catalog/conversion/raw.py
+```
+
+The image conversion service is responsible for:
+
+1. Reading uploaded image data safely.
+2. Enforcing upload size limits.
+3. Sniffing image type.
+4. Extracting EXIF metadata.
+5. Converting supported formats to RGB.
+6. Optionally invoking platform converters for HEIC/HEIF.
+7. Returning a normalized Pillow RGB image and metadata.
+
+Do not use `pillow-heif`.
+
+### Supported direct formats
+
+Directly supported by Python dependencies:
+
+```text
+JPEG / JPG
+PNG
+WebP
+RAW formats supported by rawpy
+```
+
+### HEIC / HEIF
+
+HEIC and HEIF are not decoded directly by Wild Catalog's Python image stack.
+
+Instead, Wild Catalog may optionally use platform image conversion adapters.
+
+Examples:
+
+| Platform | Possible adapter |
+|---|---|
+| macOS | `sips` |
+| Linux | ImageMagick with HEIC support, typically backed by libheif |
+| Windows | ImageMagick with HEIC support, or Windows Imaging Component / PowerShell adapter |
+
+All platform converters should be optional. If no compatible converter is
+available, return a clear unsupported-format error.
+
+### `src/wild_catalog/conversion/platform_conversion/protocols.py`
+
+```python
+from pathlib import Path
+from typing import Protocol
+
+
+class PlatformImageConverter(Protocol):
+    def can_convert(self, detected_format: str) -> bool:
         ...
 
+    def convert_to_jpeg(self, source_path: Path, output_path: Path) -> None:
+        ...
+```
+
+### `src/wild_catalog/conversion/platform_conversion/noop.py`
+
+```python
+from pathlib import Path
+
+
+class NoopPlatformImageConverter:
+    def can_convert(self, detected_format: str) -> bool:
+        return False
+
+    def convert_to_jpeg(self, source_path: Path, output_path: Path) -> None:
+        raise RuntimeError("No platform image converter is configured.")
+```
+
+### `src/wild_catalog/conversion/platform_conversion/macos_sips.py`
+
+```python
+import subprocess
+from pathlib import Path
+
+
+class MacOSSipsImageConverter:
+    def __init__(
+        self,
+        sips_path: Path = Path("/usr/bin/sips"),
+        timeout_seconds: int = 10,
+    ) -> None:
+        self._sips_path = sips_path
+        self._timeout_seconds = timeout_seconds
+
+    def can_convert(self, detected_format: str) -> bool:
+        return detected_format.lower() in {"heic", "heif"}
+
+    def convert_to_jpeg(self, source_path: Path, output_path: Path) -> None:
+        subprocess.run(
+            [
+                str(self._sips_path),
+                "-s",
+                "format",
+                "jpeg",
+                str(source_path),
+                "--out",
+                str(output_path),
+            ],
+            check=True,
+            timeout=self._timeout_seconds,
+            capture_output=True,
+            text=True,
+        )
+```
+
+### `src/wild_catalog/conversion/platform_conversion/linux_imagemagick.py`
+
+```python
+import subprocess
+from pathlib import Path
+
+
+class LinuxImageMagickImageConverter:
+    def __init__(
+        self,
+        magick_path: Path = Path("magick"),
+        timeout_seconds: int = 10,
+    ) -> None:
+        self._magick_path = magick_path
+        self._timeout_seconds = timeout_seconds
+
+    def can_convert(self, detected_format: str) -> bool:
+        return detected_format.lower() in {"heic", "heif"}
+
+    def convert_to_jpeg(self, source_path: Path, output_path: Path) -> None:
+        subprocess.run(
+            [
+                str(self._magick_path),
+                str(source_path),
+                str(output_path),
+            ],
+            check=True,
+            timeout=self._timeout_seconds,
+            capture_output=True,
+            text=True,
+        )
+```
+
+### `src/wild_catalog/conversion/platform_conversion/windows_imagemagick.py`
+
+```python
+import subprocess
+from pathlib import Path
+
+
+class WindowsImageMagickImageConverter:
+    def __init__(
+        self,
+        magick_path: Path = Path("magick.exe"),
+        timeout_seconds: int = 10,
+    ) -> None:
+        self._magick_path = magick_path
+        self._timeout_seconds = timeout_seconds
+
+    def can_convert(self, detected_format: str) -> bool:
+        return detected_format.lower() in {"heic", "heif"}
+
+    def convert_to_jpeg(self, source_path: Path, output_path: Path) -> None:
+        subprocess.run(
+            [
+                str(self._magick_path),
+                str(source_path),
+                str(output_path),
+            ],
+            check=True,
+            timeout=self._timeout_seconds,
+            capture_output=True,
+            text=True,
+        )
+```
+
+### Safety rules for platform conversion
+
+1. Use `subprocess.run([...], shell=False)`.
+2. Never interpolate user input into a shell command.
+3. Use a private temporary directory.
+4. Enforce upload size before conversion.
+5. Enforce max image pixels after conversion.
+6. Use a timeout.
+7. Capture stderr for logs, not raw API responses.
+8. Clean up temporary files automatically.
+9. Treat conversion failure as a controlled unsupported-format or
+   unprocessable-entity error.
+
+---
+
+## 10. Implement pluggable detection
+
+Create:
+
+```text
+src/wild_catalog/detection/protocols.py
+src/wild_catalog/detection/registry.py
+src/wild_catalog/detection/types.py
+src/wild_catalog/detection/policy.py
+src/wild_catalog/detection/stub.py
+src/wild_catalog/detection/grounding_dino.py
+src/wild_catalog/detection/grounding_dino_prompt.py
+src/wild_catalog/detection/grounding_dino_postprocess.py
+```
+
+The detector should only answer:
+
+```text
+Where are candidate living things in this image?
+```
+
+It should not provide final species identity.
+
+### `src/wild_catalog/detection/protocols.py`
+
+```python
+from typing import Protocol
+
+from PIL import Image
+
+from wild_catalog.detection.types import Detection
+
+
+class ObjectDetector(Protocol):
     def locate_objects(self, image: Image.Image) -> list[Detection]:
         ...
 ```
 
-Add registry:
+### `src/wild_catalog/detection/grounding_dino_prompt.py`
 
 ```python
-DETECTOR_REGISTRY = {
-    "stub": build_stub_detector,
-    "grounding-dino": build_grounding_dino_detector,
+DEFAULT_GROUNDING_DINO_PROMPT = (
+    "bird . mammal . animal . reptile . amphibian . fish . "
+    "insect . butterfly . moth . beetle . dragonfly . spider . snail . "
+    "flower . plant . tree . leaf . grass . moss . lichen . "
+    "mushroom . fungus ."
+)
+```
+
+### `src/wild_catalog/detection/policy.py`
+
+```python
+from wild_catalog.detection.types import DetectionCategory
+
+
+DETECTION_CATEGORY_BY_LABEL = {
+    "bird": DetectionCategory.ANIMAL,
+    "mammal": DetectionCategory.ANIMAL,
+    "animal": DetectionCategory.ANIMAL,
+    "reptile": DetectionCategory.ANIMAL,
+    "amphibian": DetectionCategory.ANIMAL,
+    "fish": DetectionCategory.ANIMAL,
+    "insect": DetectionCategory.ANIMAL,
+    "butterfly": DetectionCategory.ANIMAL,
+    "moth": DetectionCategory.ANIMAL,
+    "beetle": DetectionCategory.ANIMAL,
+    "dragonfly": DetectionCategory.ANIMAL,
+    "spider": DetectionCategory.ANIMAL,
+    "snail": DetectionCategory.ANIMAL,
+
+    "flower": DetectionCategory.PLANT,
+    "plant": DetectionCategory.PLANT,
+    "tree": DetectionCategory.PLANT,
+    "leaf": DetectionCategory.PLANT,
+    "grass": DetectionCategory.PLANT,
+    "moss": DetectionCategory.PLANT,
+
+    "lichen": DetectionCategory.LICHEN,
+
+    "mushroom": DetectionCategory.FUNGUS,
+    "fungus": DetectionCategory.FUNGUS,
 }
+
+
+SPECIFICITY_RANK = {
+    "animal": 1,
+    "plant": 1,
+    "fungus": 1,
+
+    "mammal": 2,
+    "reptile": 2,
+    "amphibian": 2,
+    "fish": 2,
+    "insect": 2,
+    "flower": 2,
+    "tree": 2,
+    "leaf": 2,
+    "grass": 2,
+    "moss": 2,
+    "lichen": 2,
+    "mushroom": 2,
+
+    "bird": 3,
+    "butterfly": 3,
+    "moth": 3,
+    "beetle": 3,
+    "dragonfly": 3,
+    "spider": 3,
+    "snail": 3,
+}
+
+
+def normalize_detection_label(label: str) -> DetectionCategory | None:
+    normalized = label.strip().lower()
+    return DETECTION_CATEGORY_BY_LABEL.get(normalized)
 ```
 
-Unknown backends should fail at startup with clear errors.
+### `src/wild_catalog/detection/registry.py`
 
-## 10. Implement Grounding DINO detector plugin
+```python
+from wild_catalog.core.config import Settings
+from wild_catalog.detection.protocols import ObjectDetector
+from wild_catalog.detection.stub import StubObjectDetector
+from wild_catalog.detection.grounding_dino import GroundingDinoObjectDetector
 
-The default prompt:
 
-```text
-bird . mammal . animal . reptile . amphibian . fish .
-insect . butterfly . moth . beetle . dragonfly . spider . snail .
-flower . plant . tree . leaf . grass . moss . lichen .
-mushroom . fungus .
+def build_detector(settings: Settings) -> ObjectDetector:
+    if settings.detector_backend == "stub":
+        return StubObjectDetector()
+
+    if settings.detector_backend == "grounding-dino":
+        return GroundingDinoObjectDetector(settings)
+
+    raise ValueError(f"Unknown detector backend: {settings.detector_backend}")
 ```
 
-Responsibilities:
+The pipeline should depend on `ObjectDetector`, not on `GroundingDinoObjectDetector`
+directly.
 
-1. Own prompt configuration.
-2. Preprocess the image for the model.
-3. Run inference under `torch.inference_mode()`.
-4. Postprocess model boxes into pixel `xyxy` coordinates.
-5. Normalize returned labels into detection categories.
-6. Return stable `Detection` objects.
+---
 
 ## 11. Implement deduplication
 
-Deduplicate by normalized detection category rather than exact raw label.
+Create:
 
-Default policy:
+```text
+src/wild_catalog/deduplication/iou.py
+src/wild_catalog/deduplication/service.py
+```
 
-1. Group by category.
-2. Sort by confidence descending.
-3. Compute IoU.
-4. Remove overlaps above threshold.
-5. Prefer specificity when confidence is close.
+Deduplication removes overlapping detections that likely describe the same
+organism.
+
+Because Grounding DINO can return both broad and specific labels for the same
+object, dedupe by detection category rather than exact text label.
+
+Example overlapping labels:
+
+```text
+bird + animal
+flower + plant
+mushroom + fungus
+```
+
+### `src/wild_catalog/deduplication/iou.py`
+
+```python
+from wild_catalog.core.types import BoundingBox
+
+
+def calculate_iou(a: BoundingBox, b: BoundingBox) -> float:
+    x_left = max(a.xmin, b.xmin)
+    y_top = max(a.ymin, b.ymin)
+    x_right = min(a.xmax, b.xmax)
+    y_bottom = min(a.ymax, b.ymax)
+
+    if x_right <= x_left or y_bottom <= y_top:
+        return 0.0
+
+    intersection_area = (x_right - x_left) * (y_bottom - y_top)
+    a_area = a.width * a.height
+    b_area = b.width * b.height
+    union_area = a_area + b_area - intersection_area
+
+    if union_area <= 0:
+        return 0.0
+
+    return intersection_area / union_area
+```
+
+### `src/wild_catalog/deduplication/service.py`
+
+```python
+from wild_catalog.deduplication.iou import calculate_iou
+from wild_catalog.detection.types import Detection
+
+
+class DetectionDeduplicator:
+    def __init__(self, iou_threshold: float = 0.45) -> None:
+        self._iou_threshold = iou_threshold
+
+    def filter_overlapping_detections(
+        self,
+        detections: list[Detection],
+    ) -> list[Detection]:
+        kept: list[Detection] = []
+
+        for detection in sorted(
+            detections,
+            key=lambda item: item.confidence,
+            reverse=True,
+        ):
+            duplicate = any(
+                detection.category == kept_detection.category
+                and calculate_iou(
+                    detection.bounding_box,
+                    kept_detection.bounding_box,
+                )
+                > self._iou_threshold
+                for kept_detection in kept
+            )
+
+            if not duplicate:
+                kept.append(detection)
+
+        return kept
+```
+
+A later enhancement can prefer more-specific labels when confidence scores are
+close. Start with highest confidence because it is easier to test and reason
+about.
+
+---
 
 ## 12. Implement cropping
 
-Crop after deduplication only. Apply margins, clamp to image bounds, and return RGB crops. Do not encode crops unless the request asks for detected images.
+Create:
 
-## 13. Implement pluggable classifier framework
+```text
+src/wild_catalog/cropping/service.py
+src/wild_catalog/cropping/types.py
+```
 
-Define:
+The cropper receives the normalized RGB image and deduplicated detections. It
+applies margin padding, clamps bounds to image dimensions, and returns crops.
+
+### `src/wild_catalog/cropping/service.py`
 
 ```python
+from PIL import Image
+
+from wild_catalog.core.types import BoundingBox
+from wild_catalog.cropping.types import CropResult
+from wild_catalog.detection.types import Detection
+
+
+class ImageCropper:
+    def __init__(self, margin_ratio: float) -> None:
+        self._margin_ratio = margin_ratio
+
+    def extract_target_regions(
+        self,
+        image: Image.Image,
+        detections: list[Detection],
+    ) -> list[CropResult]:
+        results: list[CropResult] = []
+        image_width, image_height = image.size
+
+        for index, detection in enumerate(detections):
+            box = detection.bounding_box
+            margin_x = int(box.width * self._margin_ratio)
+            margin_y = int(box.height * self._margin_ratio)
+
+            crop_box = BoundingBox(
+                xmin=max(0, box.xmin - margin_x),
+                ymin=max(0, box.ymin - margin_y),
+                xmax=min(image_width, box.xmax + margin_x),
+                ymax=min(image_height, box.ymax + margin_y),
+            )
+
+            crop_image = image.crop(
+                (
+                    crop_box.xmin,
+                    crop_box.ymin,
+                    crop_box.xmax,
+                    crop_box.ymax,
+                )
+            )
+
+            results.append(
+                CropResult(
+                    index=index,
+                    detection=detection,
+                    bounding_box=box,
+                    bounding_box_with_margin=crop_box,
+                    image=crop_image,
+                )
+            )
+
+        return results
+```
+
+Memory rule: only create crops after deduplication and after applying
+`max_detections`.
+
+---
+
+## 13. Implement pluggable classification
+
+Create:
+
+```text
+src/wild_catalog/classifier/protocols.py
+src/wild_catalog/classifier/registry.py
+src/wild_catalog/classifier/types.py
+src/wild_catalog/classifier/stub.py
+src/wild_catalog/classifier/birder.py
+src/wild_catalog/classifier/transforms.py
+```
+
+The classifier should answer:
+
+```text
+Given one or more cropped organism images, what are the raw model scores?
+```
+
+Prefer raw logits over probabilities so the logit conditioning layer can apply
+geographic priors before softmax.
+
+### `src/wild_catalog/classifier/protocols.py`
+
+```python
+from typing import Protocol, Sequence
+
+from PIL import Image
+
+from wild_catalog.classifier.types import ClassifierMetadata, RawClassifierOutput
+
+
 class SpeciesClassifier(Protocol):
     @property
     def metadata(self) -> ClassifierMetadata:
         ...
 
-    def predict_species(self, cropped_images: Sequence[Image.Image]) -> ClassifierOutput:
+    def predict_species(
+        self,
+        cropped_images: Sequence[Image.Image],
+    ) -> RawClassifierOutput:
         ...
 ```
 
-Add registry:
+### `src/wild_catalog/classifier/registry.py`
 
 ```python
-CLASSIFIER_REGISTRY = {
-    "stub": build_stub_classifier,
-    "birder-inat21": build_birder_inat21_classifier,
-}
+from wild_catalog.classifier.birder import BirderSpeciesClassifier
+from wild_catalog.classifier.protocols import SpeciesClassifier
+from wild_catalog.classifier.stub import StubSpeciesClassifier
+from wild_catalog.core.config import Settings
+
+
+def build_classifier(settings: Settings) -> SpeciesClassifier:
+    if settings.classifier_backend == "stub":
+        return StubSpeciesClassifier()
+
+    if settings.classifier_backend == "birder-inat21":
+        return BirderSpeciesClassifier(settings)
+
+    raise ValueError(f"Unknown classifier backend: {settings.classifier_backend}")
 ```
 
-Classifier metadata must expose class-index identity and class count.
+The pipeline should depend on `SpeciesClassifier`, not on `BirderSpeciesClassifier`
+directly.
 
-## 14. Implement Birder iNat21 classifier plugin
+---
 
-Responsibilities:
+## 14. Implement species range prior service
 
-1. Load the configured model once.
-2. Use the shared device helper.
-3. Use `.eval()` and `torch.inference_mode()`.
-4. Batch crops.
-5. Return raw logits.
-6. Expose `class_index_id`, such as `inat21`.
+Create:
 
-Default tests should use `StubSpeciesClassifier`. Real-model tests should run only with `WILD_CATALOG_RUN_REAL_MODEL_TESTS=1`.
+```text
+src/wild_catalog/prior/protocols.py
+src/wild_catalog/prior/service.py
+src/wild_catalog/prior/store.py
+src/wild_catalog/prior/h3_index.py
+src/wild_catalog/prior/types.py
+src/wild_catalog/prior/stub.py
+```
 
-## 15. Implement classifier-aware range priors
+The prior service uses GPS coordinates and range-map data to:
 
-The prior service must accept the active classifier class index. It must not assume all future classifiers use iNaturalist 2021 ordering.
+1. Build a prior mask aligned with the active classifier class index.
+2. Determine `is_present` for predicted taxa.
+
+The prior service owns `is_present`.
+
+The taxonomy service may attach `is_present` to enriched predictions, but it
+should receive that value from the prior service.
+
+### `src/wild_catalog/prior/protocols.py`
+
+```python
+from typing import Protocol
+
+from wild_catalog.classifier.types import ClassIndex
+from wild_catalog.core.types import GpsCoordinates
+from wild_catalog.prior.types import PresenceResult, PriorMask
+
+
+class SpeciesRangePrior(Protocol):
+    def generate_prior_mask(
+        self,
+        gps_coordinates: GpsCoordinates | None,
+        class_index: ClassIndex,
+    ) -> PriorMask:
+        ...
+
+    def get_presence_for_taxa(
+        self,
+        gps_coordinates: GpsCoordinates | None,
+        taxon_ids: set[int],
+    ) -> PresenceResult:
+        ...
+```
 
 Behavior:
 
-* GPS missing: return all-ones mask.
-* Compatible prior data available: return location-aware prior mask.
-* Compatible prior data unavailable: return all-ones mask or fail clearly depending on configuration.
+1. If GPS is missing, return an all-ones prior mask.
+2. If GPS is missing, treat `is_present` as `True` or `None` according to final
+   API policy. Recommended initial behavior: `True`, because there is no
+   location evidence against the taxon.
+3. If GPS is present, map the coordinate to an H3 cell.
+4. Look up taxa known or plausible in that cell.
+5. Assign `1.0` to present taxa.
+6. Assign epsilon to not-present taxa.
+7. Return a mask with length equal to the classifier class count.
 
-## 16. Implement logit conditioning
+---
 
-Use:
+## 15. Implement logit conditioning
+
+Create:
+
+```text
+src/wild_catalog/conditioning/service.py
+```
+
+The conditioning layer applies the geographic prior to classifier logits before
+softmax.
+
+Formula:
 
 ```text
 z_conditioned = z_raw + gamma * log(G + epsilon)
 ```
 
-Then apply Softmax and extract top-k predictions.
+Then softmax produces final probabilities.
 
-Validate shape compatibility before computation.
+### `src/wild_catalog/conditioning/service.py`
 
-## 17. Implement taxonomy enrichment
+```python
+import torch
 
-Taxonomy lookup should use the active classifier class index. It should return:
+from wild_catalog.classifier.types import ClassPrediction, RawClassifierOutput
+from wild_catalog.prior.types import PriorMask
 
-* scientific lineage;
-* localized common-name lineage;
-* is_present flag when GPS/range data supports it.
 
-## 18. Implement pipeline orchestration
+class LogitConditioner:
+    def __init__(
+        self,
+        gamma: float,
+        epsilon: float,
+        top_k: int,
+    ) -> None:
+        self._gamma = gamma
+        self._epsilon = epsilon
+        self._top_k = top_k
 
-The `IdentifyPipeline` should receive already-built services and plugins.
+    def apply_geographic_prior(
+        self,
+        classifier_output: RawClassifierOutput,
+        prior_mask: PriorMask,
+    ) -> list[list[ClassPrediction]]:
+        logits = classifier_output.logits
 
-Pipeline flow:
+        if classifier_output.class_index.id != prior_mask.class_index_id:
+            raise ValueError(
+                "Prior mask class index does not match classifier output."
+            )
 
-1. Validate request.
-2. Convert image and extract metadata.
-3. Apply metadata overrides.
-4. Detect candidate subjects.
-5. Deduplicate detections.
-6. Cap detections.
-7. Crop targets.
-8. Classify crops.
-9. Generate classifier-aware range prior.
-10. Apply logit conditioning.
-11. Enrich taxonomy/common names.
-12. Build response.
-13. Optionally attach crop images for multipart output.
+        prior_values = prior_mask.values.to(
+            device=logits.device,
+            dtype=logits.dtype,
+        )
 
-The pipeline should not import Grounding DINO, Birder, or platform converter modules directly.
+        safe_prior = torch.clamp(prior_values, min=self._epsilon)
+        conditioned_logits = logits + self._gamma * torch.log(safe_prior)
+        probabilities = torch.softmax(conditioned_logits, dim=-1)
 
-## 19. Implement content negotiation
+        top_probabilities, top_indices = torch.topk(
+            probabilities,
+            k=self._top_k,
+            dim=-1,
+        )
 
-Behavior:
+        results: list[list[ClassPrediction]] = []
 
-* `return_detected_images=true`: force `multipart/mixed`.
-* `return_detected_images=false` and `Accept: application/json`: JSON only.
-* `return_detected_images=false` and `Accept: multipart/mixed`: multipart with JSON part only.
+        for crop_probabilities, crop_indices in zip(
+            top_probabilities,
+            top_indices,
+            strict=True,
+        ):
+            crop_predictions = [
+                ClassPrediction(
+                    class_id=int(class_id),
+                    confidence=float(confidence),
+                )
+                for confidence, class_id in zip(
+                    crop_probabilities.detach().cpu(),
+                    crop_indices.detach().cpu(),
+                    strict=True,
+                )
+            ]
+            results.append(crop_predictions)
 
-Avoid base64. Use binary image parts for returned crops.
-
-## 20. Implement error handling
-
-Map errors clearly:
-
-* `400`: malformed request.
-* `413`: upload or decoded image too large.
-* `415`: unsupported media type or unavailable converter.
-* `422`: conversion/decode failure for a nominally supported format.
-* `503`: model or data store unavailable.
-* `500`: unexpected failure.
-
-## 21. Add startup pre-warming
-
-Production deployments can set:
-
-```text
-WILD_CATALOG_PRELOAD_MODELS=true
+        return results
 ```
 
-Startup should optionally load detector, classifier, taxonomy, and range-prior data. This avoids first-request latency spikes.
+Keep this layer free of image, HTTP, taxonomy, and detector concerns.
 
-## 22. Add bounded concurrency
+---
 
-Use a semaphore around expensive identify operations.
+## 16. Implement taxonomy service
 
-Start with:
+Create:
+
+```text
+src/wild_catalog/taxonomy/protocols.py
+src/wild_catalog/taxonomy/service.py
+src/wild_catalog/taxonomy/store.py
+src/wild_catalog/taxonomy/dwca.py
+src/wild_catalog/taxonomy/types.py
+src/wild_catalog/taxonomy/stub.py
+```
+
+The taxonomy service enriches classifier predictions with:
+
+1. Scientific taxonomy lineage.
+2. Localized common names.
+3. Taxonomy drift handling.
+4. Fallback common-name behavior.
+
+It uses the iNaturalist Taxonomy DarwinCore Archive, `taxonomy.dwca.zip`, as the
+local source of truth.
+
+Do not call live iNaturalist APIs during `/identify`.
+
+### `src/wild_catalog/taxonomy/protocols.py`
+
+```python
+from typing import Mapping, Protocol, Sequence
+
+from wild_catalog.classifier.types import ClassIndex, ClassPrediction
+from wild_catalog.taxonomy.types import EnrichedPrediction
+
+
+class TaxonomyServiceProtocol(Protocol):
+    def enrich_predictions(
+        self,
+        predictions: Sequence[ClassPrediction],
+        class_index: ClassIndex,
+        common_name_language: str,
+        presence_by_taxon_id: Mapping[int, bool],
+    ) -> list[EnrichedPrediction]:
+        ...
+```
+
+### Common name fallback order
+
+1. Requested locale exact match.
+2. Requested language without region.
+3. Project default locale.
+4. Any English common name.
+5. Scientific name.
+
+### Taxonomy service responsibilities
+
+The taxonomy service is responsible for:
+
+1. Mapping classifier class IDs to taxon IDs.
+2. Resolving accepted taxon IDs where appropriate.
+3. Walking parent links to build scientific lineage.
+4. Resolving common names for each lineage rank.
+5. Returning arrays where `taxonomy` and `taxonomy_common_names` have matching
+   indexes.
+6. Handling unknown class IDs with controlled errors.
+
+---
+
+## 17. Implement the orchestration pipeline
+
+Create:
+
+```text
+src/wild_catalog/pipeline/identify.py
+src/wild_catalog/pipeline/models.py
+```
+
+The pipeline coordinates the services.
+
+The pipeline should not know about FastAPI, multipart responses, HTTP headers, or
+specific model implementations.
+
+### `src/wild_catalog/pipeline/identify.py`
+
+```python
+from typing import BinaryIO
+
+from wild_catalog.api.request_models import IdentifyRequest
+from wild_catalog.classifier.protocols import SpeciesClassifier
+from wild_catalog.conditioning.service import LogitConditioner
+from wild_catalog.conversion.service import ImageConversionService
+from wild_catalog.core.config import Settings
+from wild_catalog.cropping.service import ImageCropper
+from wild_catalog.deduplication.service import DetectionDeduplicator
+from wild_catalog.detection.protocols import ObjectDetector
+from wild_catalog.pipeline.models import IdentifiedObject, IdentifyResult
+from wild_catalog.prior.protocols import SpeciesRangePrior
+from wild_catalog.taxonomy.protocols import TaxonomyServiceProtocol
+
+
+class IdentifyPipeline:
+    def __init__(
+        self,
+        settings: Settings,
+        converter: ImageConversionService,
+        detector: ObjectDetector,
+        deduplicator: DetectionDeduplicator,
+        cropper: ImageCropper,
+        prior_service: SpeciesRangePrior,
+        classifier: SpeciesClassifier,
+        conditioner: LogitConditioner,
+        taxonomy_service: TaxonomyServiceProtocol,
+    ) -> None:
+        self._settings = settings
+        self._converter = converter
+        self._detector = detector
+        self._deduplicator = deduplicator
+        self._cropper = cropper
+        self._prior_service = prior_service
+        self._classifier = classifier
+        self._conditioner = conditioner
+        self._taxonomy_service = taxonomy_service
+
+    def identify(
+        self,
+        image_file: BinaryIO,
+        request: IdentifyRequest,
+    ) -> IdentifyResult:
+        converted = self._converter.process_and_extract_metadata(
+            image_file=image_file,
+            original_filename=request.original_filename,
+            exif_override=request.exif_override,
+        )
+
+        detections = self._detector.locate_objects(converted.image)
+
+        deduplicated_detections = self._deduplicator.filter_overlapping_detections(
+            detections
+        )
+
+        limited_detections = deduplicated_detections[: self._settings.max_detections]
+
+        crop_results = self._cropper.extract_target_regions(
+            image=converted.image,
+            detections=limited_detections,
+        )
+
+        cropped_images = [crop.image for crop in crop_results]
+
+        if not cropped_images:
+            return IdentifyResult(objects=())
+
+        classifier_output = self._classifier.predict_species(cropped_images)
+
+        prior_mask = self._prior_service.generate_prior_mask(
+            gps_coordinates=converted.gps_coordinates,
+            class_index=classifier_output.class_index,
+        )
+
+        predictions_by_crop = self._conditioner.apply_geographic_prior(
+            classifier_output=classifier_output,
+            prior_mask=prior_mask,
+        )
+
+        all_taxon_ids = {
+            classifier_output.class_index.taxon_id_by_class_id[prediction.class_id]
+            for crop_predictions in predictions_by_crop
+            for prediction in crop_predictions
+        }
+
+        presence = self._prior_service.get_presence_for_taxa(
+            gps_coordinates=converted.gps_coordinates,
+            taxon_ids=all_taxon_ids,
+        )
+
+        identified_objects: list[IdentifiedObject] = []
+
+        for crop, crop_predictions in zip(
+            crop_results,
+            predictions_by_crop,
+            strict=True,
+        ):
+            enriched_predictions = self._taxonomy_service.enrich_predictions(
+                predictions=crop_predictions,
+                class_index=classifier_output.class_index,
+                common_name_language=request.common_name_language,
+                presence_by_taxon_id=presence.is_present_by_taxon_id,
+            )
+
+            identified_objects.append(
+                IdentifiedObject(
+                    bounding_box=crop.bounding_box,
+                    bounding_box_with_margin=crop.bounding_box_with_margin,
+                    gps_coordinates=converted.gps_coordinates,
+                    predictions=tuple(enriched_predictions),
+                    cropped_image=(
+                        crop.image if request.return_detected_images else None
+                    ),
+                )
+            )
+
+        return IdentifyResult(objects=tuple(identified_objects))
+```
+
+If you want to keep API models fully out of the pipeline, replace
+`IdentifyRequest` with a pipeline-specific request dataclass later. For an early
+implementation, using the API request model here is acceptable, but the cleaner
+long-term design is to keep them separate.
+
+---
+
+## 18. Implement content negotiation and multipart responses
+
+Create:
+
+```text
+src/wild_catalog/api/content_negotiation.py
+src/wild_catalog/api/multipart.py
+```
+
+Response behavior:
+
+1. If `return_detected_images=true`, always return `multipart/mixed`.
+2. If `return_detected_images=false` and `Accept: multipart/mixed`, return
+   multipart with only the JSON part.
+3. Otherwise return normal JSON.
+
+The first multipart part must always be the JSON payload.
+
+Subsequent parts contain crop JPEGs only when `return_detected_images=true`.
+
+Do not base64 encode crop images.
+
+---
+
+## 19. Implement error handling
+
+Create:
+
+```text
+src/wild_catalog/api/errors.py
+```
+
+Use clear error types.
+
+Recommended HTTP statuses:
+
+| Status | Use case |
+|---|---|
+| `400 Bad Request` | Malformed JSON payload, invalid GPS override |
+| `413 Payload Too Large` | Upload exceeds configured size |
+| `415 Unsupported Media Type` | Unsupported image format |
+| `422 Unprocessable Entity` | Corrupt image, failed platform conversion |
+| `503 Service Unavailable` | Required model or local data unavailable |
+| `500 Internal Server Error` | Unexpected failure |
+
+Do not expose stack traces or raw command stderr in API responses.
+
+Do log enough detail for debugging.
+
+---
+
+## 20. Implement startup pre-warming
+
+Use FastAPI lifespan support in:
+
+```text
+src/wild_catalog/api/app.py
+```
+
+Production pre-warm behavior:
+
+1. Build settings.
+2. Build the identify pipeline.
+3. If `WILD_CATALOG_PRELOAD_MODELS=true`:
+   - load detector model;
+   - load classifier model;
+   - load taxonomy store;
+   - open range prior store;
+   - optionally run a tiny synthetic inference.
+4. Log startup timing.
+
+Development behavior:
+
+1. Keep model loading lazy by default.
+2. Allow `make serve` to start quickly.
+3. Avoid model downloads unless explicitly requested.
+
+This keeps local development fast while supporting low-latency warm production
+requests.
+
+---
+
+## 21. Add bounded concurrency
+
+Real model inference can consume significant memory.
+
+Add a concurrency guard around the identify pipeline.
+
+Create:
+
+```text
+src/wild_catalog/api/dependencies.py
+```
+
+or a small helper in:
+
+```text
+src/wild_catalog/core/concurrency.py
+```
+
+Recommended setting:
 
 ```text
 WILD_CATALOG_MAX_CONCURRENT_IDENTIFY_REQUESTS=1
 ```
 
-Increase only after measuring memory and p95 latency.
+Start conservative. Increase only after measuring memory and latency.
 
-## 23. Add timing instrumentation
+---
 
-Log:
+## 22. Add timing instrumentation
 
-* conversion time;
-* detection time;
-* deduplication time;
-* cropping time;
-* classification time;
-* prior time;
-* conditioning time;
-* taxonomy time;
-* serialization time;
-* total time.
+Create:
 
-Do not expose timings publicly by default.
+```text
+src/wild_catalog/core/timing.py
+```
 
-## 24. Test strategy
+Track:
 
-Unit tests:
+```text
+conversion_ms
+detection_ms
+deduplication_ms
+cropping_ms
+prior_ms
+classification_ms
+conditioning_ms
+taxonomy_ms
+serialization_ms
+total_ms
+```
 
-* API request validation.
-* Format sniffing.
-* Platform converter selection.
-* Detector registry.
-* Grounding DINO postprocessing with mocked outputs.
-* Label normalization.
-* Deduplication IoU and specificity behavior.
-* Crop clamping.
-* Classifier registry.
-* Stub classifier contract.
-* Prior mask compatibility.
-* Logit conditioning math.
-* Taxonomy fallback.
-* Multipart response formatting.
+Do not include timing data in normal public responses.
 
-Integration tests:
+Log timing data with a request ID.
 
-* Real detector plugin with opt-in flag.
-* Real classifier plugin with opt-in flag.
-* End-to-end fixture image.
-* Platform conversion adapters mocked by default, real only in platform-specific environments.
+Optionally expose a debug header in development:
 
-Performance tests:
+```text
+X-Wild-Catalog-Total-Time-Ms
+```
 
-* Stub `/identify` p95 under 500ms.
-* Warm real-model benchmark reported separately.
+---
+
+## 23. Testing strategy
+
+Use default tests with stubs.
+
+Real model tests should be opt-in.
+
+Recommended test folders:
+
+```text
+tests/api/
+tests/conversion/
+tests/detection/
+tests/deduplication/
+tests/cropping/
+tests/classifier/
+tests/prior/
+tests/conditioning/
+tests/taxonomy/
+tests/pipeline/
+tests/performance/
+```
+
+### Unit tests
+
+Add unit tests for:
+
+1. GPS parsing.
+2. EXIF override precedence.
+3. Image format sniffing.
+4. Unsupported HEIC/HEIF behavior when no converter exists.
+5. Platform converter command construction using mocks.
+6. RGB conversion.
+7. Grounding DINO prompt contents.
+8. Detection label normalization.
+9. IoU calculation.
+10. Deduplication behavior.
+11. Crop margin and clamping.
+12. Missing-GPS prior mask.
+13. Class-index mismatch errors.
+14. Logit conditioning math.
+15. Top-k selection.
+16. Taxonomy lineage resolution.
+17. Common-name fallback.
+18. `is_present` propagation.
+19. JSON serialization.
+20. Multipart response formatting.
+
+### API tests
+
+Test:
+
+1. `GET /health`.
+2. `GET /openapi.json`.
+3. `POST /identify` with stub services and JSON response.
+4. `POST /identify` with `Accept: multipart/mixed`.
+5. `POST /identify` with `return_detected_images=true`.
+6. Invalid JSON payload.
+7. Oversized upload.
+8. Unsupported image.
+9. Missing required `original_filename`.
+
+### Contract tests
+
+Every detector plugin should pass tests proving that it:
+
+1. Returns pixel `xyxy` boxes.
+2. Keeps boxes inside image bounds.
+3. Returns normalized categories.
+4. Does not return people as target detections.
+5. Can be built from settings.
+
+Every classifier plugin should pass tests proving that it:
+
+1. Returns one output row per crop.
+2. Exposes class-index metadata.
+3. Returns logits or explicitly declares otherwise.
+4. Produces outputs that can feed the conditioning layer.
+5. Can be built from settings.
+
+### Integration tests
+
+Integration tests should be opt-in for:
+
+1. Real Grounding DINO loading.
+2. Real Birder classifier loading.
+3. Real iNaturalist taxonomy archive parsing.
+4. Real range-map lookup.
+5. End-to-end identification with fixture images.
+
+Use small fixture data for default CI.
+
+---
+
+## 24. Performance and memory rules
+
+### Hot path rules
+
+1. Do not download models during `/identify`.
+2. Do not parse `taxonomy.dwca.zip` during `/identify`.
+3. Do not call live iNaturalist APIs during `/identify`.
+4. Do not compile range maps during `/identify`.
+5. Do not base64 encode images.
+6. Do not create crops before deduplication.
+7. Do not classify more detections than `max_detections`.
+8. Do not instantiate models per request.
+9. Do not duplicate large image byte arrays.
+10. Do not keep tensors longer than necessary.
+
+### Memory rules
+
+1. Read uploads once.
+2. Use temporary files for platform conversion.
+3. Normalize to one RGB image.
+4. Crop only deduplicated detections.
+5. Batch classifier inputs.
+6. Return crop images only when requested.
+7. Use `torch.inference_mode()`.
+8. Use immutable dataclasses for small domain objects.
+9. Avoid long-lived references to Pillow images.
+10. Keep taxonomy and range stores compact and read-only where practical.
+
+---
 
 ## 25. Milestones
 
-### Milestone 1: API contract with stubs
+### Milestone 1: API shell with stubs
 
-* FastAPI app.
-* Request/response models.
-* Stub detector.
-* Stub classifier.
-* JSON and multipart response tests.
+Deliverables:
 
-### Milestone 2: Image conversion and platform adapters
+1. FastAPI app.
+2. `/health`.
+3. `/identify`.
+4. API request and response models.
+5. Stub detector.
+6. Stub classifier.
+7. Stub prior service.
+8. Stub taxonomy service.
+9. JSON response tests.
+10. Multipart response tests.
 
-* JPEG/PNG/WebP support.
-* RAW support.
-* EXIF extraction.
-* Clear unsupported-format behavior.
+Acceptance criteria:
 
-### Milestone 3: Detector plugin framework
+1. `make test-fast` passes.
+2. Stub `/identify` completes under 500ms.
+3. No real models are required.
 
-* Detector protocol.
-* Detector registry.
-* Detection domain types.
-* Grounding DINO plugin.
-* Label normalization.
-* Detector contract tests.
+---
+
+### Milestone 2: Image conversion
+
+Deliverables:
+
+1. Format sniffing.
+2. Pillow standard image path.
+3. RAW path with `rawpy`.
+4. EXIF extraction.
+5. GPS extraction.
+6. EXIF override handling.
+7. Platform conversion protocol.
+8. No-op converter.
+9. macOS `sips` converter.
+10. Linux ImageMagick converter.
+11. Windows ImageMagick converter.
+
+Acceptance criteria:
+
+1. JPEG converts to RGB.
+2. PNG converts to RGB.
+3. WebP converts to RGB.
+4. RAW fixtures convert when available.
+5. HEIC/HEIF returns a controlled error if no converter is available.
+6. Platform converters are tested with mocked subprocess calls.
+7. `pillow-heif` is not required.
+
+---
+
+### Milestone 3: Pluggable detector framework and Grounding DINO plugin
+
+Deliverables:
+
+1. `ObjectDetector` protocol.
+2. Detector registry.
+3. Detection domain types.
+4. Grounding DINO prompt config.
+5. Grounding DINO adapter.
+6. Label normalization.
+7. Detector contract tests.
+
+Acceptance criteria:
+
+1. `stub` detector works without model dependencies.
+2. `grounding-dino` detector can be selected by config.
+3. Unknown detector backend fails with a clear error.
+4. Pipeline does not import Grounding DINO directly.
+5. Detector output uses stable Wild Catalog `Detection` objects.
+
+---
 
 ### Milestone 4: Deduplication and cropping
 
-* Category-aware IoU deduplication.
-* Specificity tie-breaker.
-* Margin-aware crop extraction.
-* Memory guardrails.
+Deliverables:
 
-### Milestone 5: Classifier plugin framework
+1. IoU calculation.
+2. Category-aware deduplication.
+3. Crop margin logic.
+4. Crop clamping.
+5. Crop result types.
 
-* Classifier protocol.
-* Classifier registry.
-* Classifier metadata.
-* Stub classifier.
-* Birder iNat21 plugin.
+Acceptance criteria:
 
-### Milestone 6: Priors, conditioning, and taxonomy
+1. Overlapping `bird` and `animal` boxes dedupe.
+2. Overlapping `flower` and `plant` boxes dedupe.
+3. Non-overlapping same-category boxes are kept.
+4. Crops stay inside image bounds.
+5. Crops are only generated after deduplication.
 
-* Classifier-aware range prior.
-* Logit conditioning.
-* Taxonomy/common-name enrichment.
-* is_present flag behavior.
+---
 
-### Milestone 7: Production hardening
+### Milestone 5: Pluggable classifier framework and Birder plugin
 
-* Pre-warming.
-* Bounded concurrency.
-* Stage timing.
-* Error handling.
-* Performance benchmarks.
-* Documentation updates.
+Deliverables:
 
-## 26. Final implementation priority
+1. `SpeciesClassifier` protocol.
+2. Classifier registry.
+3. Classifier metadata.
+4. Class index metadata.
+5. Stub classifier.
+6. Birder iNat21 classifier plugin.
+7. Classifier contract tests.
+
+Acceptance criteria:
+
+1. `stub` classifier works without model dependencies.
+2. `birder-inat21` classifier can be selected by config.
+3. Unknown classifier backend fails with a clear error.
+4. Pipeline does not import Birder directly.
+5. Classifier output includes class-index metadata.
+
+---
+
+### Milestone 6: Range prior and logit conditioning
+
+Deliverables:
+
+1. Species range prior protocol.
+2. Prior mask type.
+3. Presence result type.
+4. H3 coordinate mapping.
+5. Local range map store.
+6. Logit conditioning layer.
+7. Top-k conditioned predictions.
+
+Acceptance criteria:
+
+1. Missing GPS returns an all-ones prior mask.
+2. Present taxa receive a high prior value.
+3. Not-present taxa receive epsilon.
+4. Prior mask class index must match classifier output class index.
+5. Conditioning tests prove the formula works.
+6. `is_present` is produced by the prior layer.
+
+---
+
+### Milestone 7: Taxonomy service
+
+Deliverables:
+
+1. Taxonomy service protocol.
+2. Taxonomy types.
+3. Stub taxonomy service.
+4. DarwinCore Archive loader.
+5. Compiled taxonomy lookup store.
+6. Common-name fallback.
+7. Taxonomy lineage resolution.
+8. Taxonomy drift mapping support.
+
+Acceptance criteria:
+
+1. Class ID maps to taxon ID.
+2. Taxon ID maps to scientific lineage.
+3. Common names resolve for `en-US`.
+4. Locale fallback works.
+5. Missing common names fall back to scientific names.
+6. `taxonomy` and `taxonomy_common_names` arrays have matching lengths.
+7. `/identify` does not parse the full archive at request time.
+
+---
+
+### Milestone 8: Production readiness
+
+Deliverables:
+
+1. Startup pre-warming.
+2. Bounded concurrency.
+3. Timing logs.
+4. Request IDs.
+5. Controlled error responses.
+6. Performance tests.
+7. Memory tests.
+
+Acceptance criteria:
+
+1. Warm stub request stays under 500ms.
+2. Warm real-model benchmark is measured and documented.
+3. Cold-start behavior is documented separately.
+4. Repeated requests do not leak memory.
+5. Full test suite passes.
+
+---
+
+## 26. Final implementation order
 
 Build in this order:
 
-1. API and stubs.
-2. Image conversion.
-3. Platform conversion adapter interface.
-4. Detector plugin framework.
-5. Grounding DINO detector plugin.
-6. Deduplication and cropping.
-7. Classifier plugin framework.
-8. Birder iNat21 classifier plugin.
-9. Classifier-aware range priors.
-10. Logit conditioning.
-11. Taxonomy enrichment.
-12. Multipart responses.
-13. Pre-warming, concurrency, and performance tests.
+1. Domain types.
+2. Settings.
+3. API request/response models.
+4. API app with stubbed pipeline.
+5. Stub detector/classifier/prior/taxonomy.
+6. Image conversion.
+7. Platform conversion adapters.
+8. Detection plugin framework.
+9. Grounding DINO plugin.
+10. Deduplication.
+11. Cropping.
+12. Classifier plugin framework.
+13. Birder classifier plugin.
+14. Range prior service.
+15. Logit conditioning.
+16. Taxonomy service.
+17. Multipart responses.
+18. Startup pre-warming.
+19. Performance instrumentation.
+20. Production hardening.
+
+---
+
+## 27. Summary
+
+Wild Catalog should be implemented as a clear, modular pipeline:
+
+```text
+API Gateway
+→ Image Conversion Service
+→ Detector Plugin
+→ Deduplication Service
+→ Cropping Service
+→ Classifier Plugin
+→ Species Range Prior Service
+→ Logit Conditioning Layer
+→ Taxonomy Service
+→ API Response
+```
+
+The detector and classifier are runtime-selected plugins.
+
+The range prior and taxonomy services are classifier-aware.
+
+The API response uses `is_present`, not `is_endemic`.
+
+HEIC/HEIF support is handled through optional platform conversion adapters, not
+through `pillow-heif`.
+
+The hot `/identify` path should use local models and local compiled data only. It
+should not perform downloads, network calls, archive parsing, or expensive setup
+work during request handling.
