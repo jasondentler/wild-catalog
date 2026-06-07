@@ -67,18 +67,19 @@ select = [
 [tool.pytest.ini_options]
 addopts = [
     "-ra",
+    "--import-mode=importlib",
     "--cov=src/wild_catalog",
     "--cov-report=term-missing",
     "--cov-fail-under=80",
 ]
 markers = [
-    "integration: Suite for heavyweight integration tests that download and evaluate real YOLO/Birder models",
+    "integration: Suite for heavyweight integration tests that download and evaluate real models or large datasets",
 ]
 filterwarnings = [
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]
 pythonpath = [".", "src"]
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/integration"]
 
 [tool.coverage.run]
 branch = true

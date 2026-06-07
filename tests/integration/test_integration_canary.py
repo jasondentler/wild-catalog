@@ -2,11 +2,15 @@ import os
 
 import pytest
 
+pytestmark = pytest.mark.integration
 
-@pytest.mark.integration
-@pytest.mark.skipif(
+
+requires_integration_suite = pytest.mark.skipif(
     os.getenv("WILD_CATALOG_RUN_INTEGRATION_TESTS") != "1",
-    reason="Skipping integration test suite. Run 'make test' to execute."
+    reason="Skipping integration test suite. Run 'make test' to execute.",
 )
-def test_integration_canary():
+
+
+@requires_integration_suite
+def test_integration_canary() -> None:
     assert True

@@ -15,3 +15,9 @@ class BoundingBox:
     @property
     def height(self) -> int:
         return self.ymax - self.ymin
+
+
+@dataclass(frozen=True, slots=True)
+class GpsCoordinates:
+    latitude: float
+    longitude: float
