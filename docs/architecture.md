@@ -77,7 +77,7 @@ sequenceDiagram
 1. The API gateway owns HTTP only.
 2. The pipeline owns orchestration only.
 3. Detector plugins own model-specific detection preprocessing, inference, and postprocessing.
-4. Classifier plugins own model-specific crop preprocessing, inference, and class-index metadata.
+4. Classifier plugins own model-specific crop preprocessing, inference, and class-index metadata; the pipeline depends on `SpeciesClassifier`, not concrete plugins such as Birder.
 5. The range prior service must be aware of the active classifier class index.
 6. The logit conditioning layer should operate on tensors and prior vectors only.
 7. Taxonomy enrichment should use classifier class-index metadata rather than assuming one hard-coded taxonomy forever.
@@ -94,4 +94,3 @@ sequenceDiagram
 7. [Species Range Prior Service](./species-range-prior-service.md)
 8. [Logit Conditioning Layer](./logit-conditioning-layer.md)
 9. [Taxonomy Service](./taxonomy-service.md)
-

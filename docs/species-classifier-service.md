@@ -18,7 +18,7 @@ class SpeciesClassifier(Protocol):
     def metadata(self) -> ClassifierMetadata:
         ...
 
-    def predict_species(self, cropped_images: Sequence[Image.Image]) -> ClassifierOutput:
+    def predict_species(self, cropped_images: Sequence[Image.Image]) -> RawClassifierOutput:
         ...
 ```
 
@@ -41,13 +41,12 @@ class ClassifierMetadata:
 
 ```python
 @dataclass(frozen=True, slots=True)
-class ClassifierOutput:
-    scores: torch.Tensor
+class RawClassifierOutput:
+    logits: torch.Tensor
     class_index: ClassIndex
-    output_type: Literal["logits", "probabilities"]
 ```
 
-For logit conditioning, `output_type` should be `"logits"`. Classifiers that can only return probabilities may be supported later, but geographic conditioning will be less principled unless the adapter can expose logits.
+The classifier metadata `output_type` should be `"logits"` for logit conditioning. Classifiers that can only return probabilities may be supported later, but geographic conditioning will be less principled unless the adapter can expose logits.
 
 ## Default planned production plugin: Birder iNat21
 
@@ -80,10 +79,16 @@ WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K=12
 ## Registry
 
 ```python
-CLASSIFIER_REGISTRY: dict[str, ClassifierFactory] = {
-    "stub": build_stub_classifier,
-    "birder-inat21": build_birder_inat21_classifier,
-}
+def build_classifier(settings: Settings) -> SpeciesClassifier:
+    if settings.classifier_backend == "stub":
+        return StubSpeciesClassifier()
+
+    if settings.classifier_backend == "birder-inat21":
+        from wild_catalog.classifier.birder import BirderSpeciesClassifier
+
+        return BirderSpeciesClassifier(settings)
+
+    raise ValueError(f"Unknown classifier backend: {settings.classifier_backend}")
 ```
 
 Unknown classifier backend names should fail at startup with a clear configuration error.
@@ -101,7 +106,7 @@ If no compatible taxonomy store is available, the taxonomy service should fail c
 Default tests use `StubSpeciesClassifier` and do not require model weights. Real-model integration tests are skipped unless explicitly enabled with:
 
 ```text
-WILD_CATALOG_RUN_REAL_MODEL_TESTS=1
+make test
 ```
 
 Shared classifier contract tests should verify:
@@ -111,3 +116,37 @@ Shared classifier contract tests should verify:
 * `class_index_id` is present.
 * Output can feed the logit conditioning layer.
 * Empty crop lists are handled predictably.
+
+## Real Model Integration Tests
+
+Real Birder classifier tests live under:
+
+```text
+tests/integration/classifier/
+```
+
+They use realistic project fixtures from:
+
+```text
+sample-images/
+```
+
+Run the fast unit suite with:
+
+```bash
+make test-fast
+```
+
+Run the full suite, including real Birder integration tests, with:
+
+```bash
+make test
+```
+
+Run the repository PR gate with:
+
+```bash
+make pr
+```
+
+These tests verify the adapter contract for `hieradet_d_small_dino-v2-inat21`: model loading, RGB transforms, batching, raw logits, class-index metadata, and output shape. They are not general model-evaluation tests.

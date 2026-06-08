@@ -8,6 +8,8 @@ def build_classifier(settings: Settings) -> SpeciesClassifier:
         return StubSpeciesClassifier()
 
     if settings.classifier_backend == "birder-inat21":
-        raise NotImplementedError("Birder iNat21 classifier backend is not implemented yet.")
+        from wild_catalog.classifier.birder import BirderSpeciesClassifier
+
+        return BirderSpeciesClassifier(settings)
 
     raise ValueError(f"Unknown classifier backend: {settings.classifier_backend}")

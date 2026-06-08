@@ -54,3 +54,16 @@ def test_services_do_not_import_api_models() -> None:
 
             for forbidden_import in forbidden_imports:
                 assert forbidden_import not in text, f"{path} must not import {forbidden_import}"
+
+
+def test_pipeline_does_not_import_concrete_classifier_plugins() -> None:
+    forbidden_imports = [
+        "wild_catalog.classifier.birder",
+        "BirderSpeciesClassifier",
+    ]
+
+    for path in read_python_files("pipeline"):
+        text = path.read_text()
+
+        for forbidden_import in forbidden_imports:
+            assert forbidden_import not in text, f"{path} must not import {forbidden_import}"

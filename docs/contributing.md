@@ -154,6 +154,7 @@ All contributions require tests to ensure stability and prevent regressions. I u
    ```bash
    make test
    ```
+   Real Birder classifier integration tests live under `tests/integration/classifier/` and use the project fixtures in `sample-images/`.
 4. **Test Coverage**: I require a minimum of $\ge 80\%$ code coverage. The default test commands enforce this through the repository configuration automatically.
 
 ---

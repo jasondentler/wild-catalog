@@ -1439,7 +1439,6 @@ class SpeciesClassifier(Protocol):
 ### `src/wild_catalog/classifier/registry.py`
 
 ```python
-from wild_catalog.classifier.birder import BirderSpeciesClassifier
 from wild_catalog.classifier.protocols import SpeciesClassifier
 from wild_catalog.classifier.stub import StubSpeciesClassifier
 from wild_catalog.core.config import Settings
@@ -1450,6 +1449,8 @@ def build_classifier(settings: Settings) -> SpeciesClassifier:
         return StubSpeciesClassifier()
 
     if settings.classifier_backend == "birder-inat21":
+        from wild_catalog.classifier.birder import BirderSpeciesClassifier
+
         return BirderSpeciesClassifier(settings)
 
     raise ValueError(f"Unknown classifier backend: {settings.classifier_backend}")
@@ -1457,6 +1458,30 @@ def build_classifier(settings: Settings) -> SpeciesClassifier:
 
 The pipeline should depend on `SpeciesClassifier`, not on `BirderSpeciesClassifier`
 directly.
+
+### Step 13A real Birder integration tests
+
+Real Birder iNat21 integration tests live under:
+
+```text
+tests/integration/classifier/
+```
+
+They use realistic JPEG fixtures from:
+
+```text
+sample-images/
+```
+
+Use the existing project commands:
+
+```bash
+make test-fast
+make test
+make pr
+```
+
+The tests verify the `hieradet_d_small_dino-v2-inat21` adapter contract: model loading, RGB input handling, batching, raw logits, one row per input image, class-index metadata, and registry construction. The `20260402-IMG_7906.jpg` fixture is also checked for a cormorant label in the model's top predictions.
 
 ---
 
