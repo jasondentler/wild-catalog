@@ -2,6 +2,13 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+DEFAULT_INAT_RANGE_MAPS_METADATA_URL = (
+    "https://inaturalist-open-data.s3.us-east-1.amazonaws.com/"
+    "geomodel/geopackages/latest/metadata.json"
+)
+DEFAULT_INAT_RANGE_MAPS_DOWNLOAD_DIR = Path("data/range-maps/geopackages")
+DEFAULT_RANGE_MAP_STORE_PATH = Path("data/range-maps/ranges.sqlite3")
+
 
 @dataclass(frozen=True, slots=True)
 class Settings:
@@ -29,7 +36,14 @@ class Settings:
     classifier_batch_size: int = 8
     classifier_top_k: int = 12
     classifier_model_cache_path: Path | None = None
-    range_map_store_path: Path | None = None
+    inat_range_maps_metadata_url: str = DEFAULT_INAT_RANGE_MAPS_METADATA_URL
+    inat_range_maps_download_dir: Path = DEFAULT_INAT_RANGE_MAPS_DOWNLOAD_DIR
+    inat_range_maps_download_concurrency: int = 4
+    range_map_store_path: Path | None = DEFAULT_RANGE_MAP_STORE_PATH
+    range_map_h3_resolution: int = 5
+    range_prior_cache_enabled: bool = True
+    range_prior_cache_h3_resolution: int = 5
+    range_prior_cache_max_entries: int = 512
     prior_epsilon: float = 0.01
     prior_gamma: float = 1.0
     taxonomy_dwca_url: str = "https://www.inaturalist.org/taxa/inaturalist-taxonomy.dwca.zip"
@@ -83,7 +97,36 @@ class Settings:
             classifier_model_cache_path=_read_optional_path(
                 "WILD_CATALOG_SPECIES_CLASSIFIER_MODEL_CACHE_PATH"
             ),
-            range_map_store_path=_read_optional_path("WILD_CATALOG_RANGE_MAP_STORE_PATH"),
+            inat_range_maps_metadata_url=os.getenv(
+                "WILD_CATALOG_INAT_RANGE_MAPS_METADATA_URL",
+                DEFAULT_INAT_RANGE_MAPS_METADATA_URL,
+            ),
+            inat_range_maps_download_dir=Path(
+                os.getenv(
+                    "WILD_CATALOG_INAT_RANGE_MAPS_DOWNLOAD_DIR",
+                    str(DEFAULT_INAT_RANGE_MAPS_DOWNLOAD_DIR),
+                )
+            ),
+            inat_range_maps_download_concurrency=int(
+                os.getenv("WILD_CATALOG_INAT_RANGE_MAPS_DOWNLOAD_CONCURRENCY", "4")
+            ),
+            range_map_store_path=_read_optional_path(
+                "WILD_CATALOG_RANGE_MAP_STORE_PATH",
+                default=DEFAULT_RANGE_MAP_STORE_PATH,
+            ),
+            range_map_h3_resolution=int(
+                os.getenv("WILD_CATALOG_RANGE_MAP_H3_RESOLUTION", "5")
+            ),
+            range_prior_cache_enabled=_read_bool(
+                "WILD_CATALOG_RANGE_PRIOR_CACHE_ENABLED",
+                True,
+            ),
+            range_prior_cache_h3_resolution=int(
+                os.getenv("WILD_CATALOG_RANGE_PRIOR_CACHE_H3_RESOLUTION", "5")
+            ),
+            range_prior_cache_max_entries=int(
+                os.getenv("WILD_CATALOG_RANGE_PRIOR_CACHE_MAX_ENTRIES", "512")
+            ),
             prior_epsilon=float(os.getenv("WILD_CATALOG_PRIOR_EPSILON", "0.01")),
             prior_gamma=float(os.getenv("WILD_CATALOG_PRIOR_GAMMA", "1.0")),
             taxonomy_dwca_url=os.getenv(
@@ -110,10 +153,13 @@ def _read_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _read_optional_path(name: str) -> Path | None:
+def _read_optional_path(name: str, *, default: Path | None = None) -> Path | None:
     value = os.getenv(name)
 
-    if value is None or value.strip() == "":
+    if value is None:
+        return default
+
+    if value.strip() == "":
         return None
 
     return Path(value)

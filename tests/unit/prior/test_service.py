@@ -1,10 +1,11 @@
 import pytest
 import torch
+from shapely import to_wkb
+from shapely.geometry import Polygon
 
 from wild_catalog.classifier.types import ClassIndex
 from wild_catalog.core.config import Settings
 from wild_catalog.core.types import GpsCoordinates
-from wild_catalog.prior.h3_index import gps_coordinates_to_h3_cell
 from wild_catalog.prior.service import SpeciesRangePriorService
 from wild_catalog.prior.stub import StubSpeciesRangeStore
 
@@ -51,15 +52,15 @@ def test_get_presence_for_taxa_returns_true_when_gps_missing() -> None:
 
 def test_generate_prior_mask_uses_present_taxa_when_gps_exists() -> None:
     gps_coordinates = GpsCoordinates(latitude=29.7604, longitude=-95.3698)
-    h3_cell = gps_coordinates_to_h3_cell(gps_coordinates, resolution=5)
 
     service = SpeciesRangePriorService(
-        Settings(prior_epsilon=0.01),
+        Settings(prior_epsilon=0.01, range_prior_cache_enabled=False),
         store=StubSpeciesRangeStore(
-            present_taxon_ids_by_h3_cell={
-                h3_cell: {101, 303},
-            },
-            h3_resolution=5,
+            candidate_geometries=[
+                (101, to_wkb(_box(-96.0, 29.0, -95.0, 30.0))),
+                (202, to_wkb(_box(-80.0, 20.0, -79.0, 21.0))),
+                (303, to_wkb(_box(-96.0, 29.0, -95.0, 30.0))),
+            ],
         ),
     )
     class_index = ClassIndex(
@@ -85,15 +86,14 @@ def test_generate_prior_mask_uses_present_taxa_when_gps_exists() -> None:
 
 def test_get_presence_for_taxa_uses_range_store_when_gps_exists() -> None:
     gps_coordinates = GpsCoordinates(latitude=29.7604, longitude=-95.3698)
-    h3_cell = gps_coordinates_to_h3_cell(gps_coordinates, resolution=5)
 
     service = SpeciesRangePriorService(
-        Settings(),
+        Settings(range_prior_cache_enabled=False),
         store=StubSpeciesRangeStore(
-            present_taxon_ids_by_h3_cell={
-                h3_cell: {101},
-            },
-            h3_resolution=5,
+            candidate_geometries=[
+                (101, to_wkb(_box(-96.0, 29.0, -95.0, 30.0))),
+                (202, to_wkb(_box(-80.0, 20.0, -79.0, 21.0))),
+            ],
         ),
     )
 
@@ -126,3 +126,15 @@ def test_generate_prior_mask_rejects_non_contiguous_class_index() -> None:
             gps_coordinates=None,
             class_index=class_index,
         )
+
+
+def _box(min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> Polygon:
+    return Polygon(
+        [
+            (min_lon, min_lat),
+            (max_lon, min_lat),
+            (max_lon, max_lat),
+            (min_lon, max_lat),
+            (min_lon, min_lat),
+        ]
+    )

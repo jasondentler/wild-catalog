@@ -1,4 +1,4 @@
-.PHONY: all clean venv install install-hooks license-check lint lint-fix test test-fast check-prereqs serve pr
+.PHONY: all clean venv install install-hooks license-check lint lint-fix test test-fast check-prereqs serve pr preop preop-range-maps
 
 # 1. Detect Operating System and set path/variable rules
 ifeq ($(OS),Windows_NT)
@@ -77,6 +77,13 @@ test-fast:
 # 9. Start the local development API server with auto-reload
 serve:
 	$(VENV_BIN)/uvicorn wild_catalog.api.app:app --reload --app-dir src
+
+# 9b. Run pre-operational setup tasks
+preop:
+	$(VENV_BIN)/python -m wild_catalog.preop.cli
+
+preop-range-maps:
+	$(VENV_BIN)/python -m wild_catalog.prior.build.cli
 
 # 10. Pre-PR Validation checklist (Runs updates, linter, and tests)
 pr: install lint test

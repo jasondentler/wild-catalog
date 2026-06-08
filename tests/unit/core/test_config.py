@@ -38,3 +38,33 @@ def test_settings_from_env_reads_optional_path(monkeypatch) -> None:
     settings = Settings.from_env()
 
     assert settings.classifier_model_cache_path == Path("/tmp/model-cache")
+
+
+def test_settings_from_env_reads_range_map_builder_settings(monkeypatch) -> None:
+    monkeypatch.setenv("WILD_CATALOG_INAT_RANGE_MAPS_METADATA_URL", "https://example.test/meta.json")
+    monkeypatch.setenv("WILD_CATALOG_INAT_RANGE_MAPS_DOWNLOAD_DIR", "/tmp/range-downloads")
+    monkeypatch.setenv("WILD_CATALOG_INAT_RANGE_MAPS_DOWNLOAD_CONCURRENCY", "8")
+    monkeypatch.setenv("WILD_CATALOG_RANGE_MAP_STORE_PATH", "/tmp/ranges.sqlite3")
+    monkeypatch.setenv("WILD_CATALOG_RANGE_MAP_H3_RESOLUTION", "7")
+    monkeypatch.setenv("WILD_CATALOG_RANGE_PRIOR_CACHE_ENABLED", "false")
+    monkeypatch.setenv("WILD_CATALOG_RANGE_PRIOR_CACHE_H3_RESOLUTION", "6")
+    monkeypatch.setenv("WILD_CATALOG_RANGE_PRIOR_CACHE_MAX_ENTRIES", "123")
+
+    settings = Settings.from_env()
+
+    assert settings.inat_range_maps_metadata_url == "https://example.test/meta.json"
+    assert settings.inat_range_maps_download_dir == Path("/tmp/range-downloads")
+    assert settings.inat_range_maps_download_concurrency == 8
+    assert settings.range_map_store_path == Path("/tmp/ranges.sqlite3")
+    assert settings.range_map_h3_resolution == 7
+    assert settings.range_prior_cache_enabled is False
+    assert settings.range_prior_cache_h3_resolution == 6
+    assert settings.range_prior_cache_max_entries == 123
+
+
+def test_settings_from_env_defaults_range_map_store_path(monkeypatch) -> None:
+    monkeypatch.delenv("WILD_CATALOG_RANGE_MAP_STORE_PATH", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.range_map_store_path == Path("data/range-maps/ranges.sqlite3")

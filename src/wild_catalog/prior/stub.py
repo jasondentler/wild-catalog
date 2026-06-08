@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from wild_catalog.prior.store import SpeciesRangeStore
 
 
@@ -5,17 +7,28 @@ class StubSpeciesRangeStore(SpeciesRangeStore):
     def __init__(
         self,
         *,
-        present_taxon_ids_by_h3_cell: dict[str, set[int]] | None = None,
-        h3_resolution: int = 5,
+        candidate_geometries: Iterable[tuple[int, bytes]] | None = None,
     ) -> None:
-        self._present_taxon_ids_by_h3_cell = present_taxon_ids_by_h3_cell or {}
-        self._h3_resolution = h3_resolution
+        self._candidate_geometries = list(candidate_geometries or [])
 
-    def get_present_taxon_ids_for_cell(self, h3_cell: str) -> set[int]:
-        return set(self._present_taxon_ids_by_h3_cell.get(h3_cell, set()))
+    def get_candidate_geometries_for_point(
+        self,
+        *,
+        latitude: float,
+        longitude: float,
+    ) -> list[tuple[int, bytes]]:
+        return list(self._candidate_geometries)
 
-    def contains_taxon_in_cell(self, *, h3_cell: str, taxon_id: int) -> bool:
-        return taxon_id in self._present_taxon_ids_by_h3_cell.get(h3_cell, set())
-
-    def get_h3_resolution(self) -> int:
-        return self._h3_resolution
+    def get_candidate_geometries_for_taxa_at_point(
+        self,
+        *,
+        latitude: float,
+        longitude: float,
+        taxon_ids: Iterable[int],
+    ) -> list[tuple[int, bytes]]:
+        requested_taxon_ids = set(taxon_ids)
+        return [
+            (taxon_id, geometry_wkb)
+            for taxon_id, geometry_wkb in self._candidate_geometries
+            if taxon_id in requested_taxon_ids
+        ]

@@ -1,92 +1,72 @@
-import sqlite3
-
-import pytest
+from shapely.geometry import Polygon
 
 from tests.unit.prior.helpers import create_range_store_fixture
 from wild_catalog.prior.store import SQLiteSpeciesRangeStore
 
 
-def test_sqlite_store_returns_present_taxon_ids_for_cell(tmp_path) -> None:
+def test_sqlite_store_returns_candidate_geometries_for_point(tmp_path) -> None:
     database_path = tmp_path / "ranges.sqlite3"
 
     create_range_store_fixture(
         database_path,
-        h3_resolution=5,
-        rows=[
-            ("cell-a", 101),
-            ("cell-a", 202),
-            ("cell-b", 303),
+        geometries=[
+            (101, _box(-96.0, 29.0, -95.0, 30.0)),
+            (202, _box(-96.0, 29.0, -95.0, 30.0)),
+            (303, _box(-80.0, 20.0, -79.0, 21.0)),
         ],
     )
 
     store = SQLiteSpeciesRangeStore(database_path)
 
     try:
-        assert store.get_present_taxon_ids_for_cell("cell-a") == {101, 202}
-        assert store.get_present_taxon_ids_for_cell("cell-b") == {303}
-        assert store.get_present_taxon_ids_for_cell("missing") == set()
-    finally:
-        store.close()
-
-
-def test_sqlite_store_contains_taxon_in_cell(tmp_path) -> None:
-    database_path = tmp_path / "ranges.sqlite3"
-
-    create_range_store_fixture(
-        database_path,
-        h3_resolution=5,
-        rows=[
-            ("cell-a", 101),
-        ],
-    )
-
-    store = SQLiteSpeciesRangeStore(database_path)
-
-    try:
-        assert store.contains_taxon_in_cell(h3_cell="cell-a", taxon_id=101) is True
-        assert store.contains_taxon_in_cell(h3_cell="cell-a", taxon_id=202) is False
-        assert store.contains_taxon_in_cell(h3_cell="cell-b", taxon_id=101) is False
-    finally:
-        store.close()
-
-
-def test_sqlite_store_reads_h3_resolution(tmp_path) -> None:
-    database_path = tmp_path / "ranges.sqlite3"
-
-    create_range_store_fixture(
-        database_path,
-        h3_resolution=7,
-        rows=[],
-    )
-
-    store = SQLiteSpeciesRangeStore(database_path)
-
-    try:
-        assert store.get_h3_resolution() == 7
-    finally:
-        store.close()
-
-
-def test_sqlite_store_requires_h3_resolution_metadata(tmp_path) -> None:
-    database_path = tmp_path / "ranges.sqlite3"
-    connection = sqlite3.connect(database_path)
-    try:
-        connection.execute(
-            """
-            CREATE TABLE range_store_metadata (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            )
-            """
+        candidates = store.get_candidate_geometries_for_point(
+            latitude=29.7604,
+            longitude=-95.3698,
         )
-        connection.commit()
+        missing = store.get_candidate_geometries_for_point(
+            latitude=10.0,
+            longitude=10.0,
+        )
     finally:
-        connection.close()
+        store.close()
+
+    assert [taxon_id for taxon_id, _ in candidates] == [101, 202]
+    assert missing == []
+
+
+def test_sqlite_store_filters_candidate_geometries_by_taxa(tmp_path) -> None:
+    database_path = tmp_path / "ranges.sqlite3"
+
+    create_range_store_fixture(
+        database_path,
+        geometries=[
+            (101, _box(-96.0, 29.0, -95.0, 30.0)),
+            (202, _box(-96.0, 29.0, -95.0, 30.0)),
+            (303, _box(-96.0, 29.0, -95.0, 30.0)),
+        ],
+    )
 
     store = SQLiteSpeciesRangeStore(database_path)
 
     try:
-        with pytest.raises(ValueError, match="h3_resolution"):
-            store.get_h3_resolution()
+        candidates = store.get_candidate_geometries_for_taxa_at_point(
+            latitude=29.7604,
+            longitude=-95.3698,
+            taxon_ids={101, 303},
+        )
     finally:
         store.close()
+
+    assert [taxon_id for taxon_id, _ in candidates] == [101, 303]
+
+
+def _box(min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> Polygon:
+    return Polygon(
+        [
+            (min_lon, min_lat),
+            (max_lon, min_lat),
+            (max_lon, max_lat),
+            (min_lon, max_lat),
+            (min_lon, min_lat),
+        ]
+    )

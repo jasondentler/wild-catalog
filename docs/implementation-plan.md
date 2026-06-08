@@ -1539,8 +1539,10 @@ Behavior:
 1. If GPS is missing, return an all-ones prior mask.
 2. If GPS is missing, treat `is_present` as `True`, because there is no location
    evidence against the taxon.
-3. If GPS is present, map the coordinate to an H3 cell.
-4. Look up taxa known or plausible in that cell from the local SQLite store.
+3. If GPS is present, query the local SQLite RTree for candidate range
+   geometries at that point.
+4. Use exact point-in-geometry checks to determine taxa known or plausible at
+   that point.
 5. Assign `1.0` to present taxa.
 6. Assign epsilon to not-present taxa.
 7. Return a mask with length equal to the classifier class count.
@@ -1553,14 +1555,26 @@ archives, or write the compiled SQLite range store.
 The initial request-time schema is:
 
 ```sql
-CREATE TABLE range_cells (
-    h3_cell TEXT NOT NULL,
+CREATE TABLE range_geometries (
+    id INTEGER PRIMARY KEY,
     taxon_id INTEGER NOT NULL,
-    PRIMARY KEY (h3_cell, taxon_id)
+    min_lon REAL NOT NULL,
+    min_lat REAL NOT NULL,
+    max_lon REAL NOT NULL,
+    max_lat REAL NOT NULL,
+    geometry_wkb BLOB NOT NULL
 );
 
-CREATE INDEX idx_range_cells_taxon_id
-ON range_cells (taxon_id);
+CREATE VIRTUAL TABLE range_geometries_rtree USING rtree(
+    id,
+    min_lon,
+    max_lon,
+    min_lat,
+    max_lat
+);
+
+CREATE INDEX idx_range_geometries_taxon_id
+ON range_geometries (taxon_id);
 
 CREATE TABLE range_store_metadata (
     key TEXT PRIMARY KEY,
@@ -1568,23 +1582,25 @@ CREATE TABLE range_store_metadata (
 );
 ```
 
-The metadata table must include `h3_resolution`.
+The metadata table must include `source`, `source_version`, `geometry_format`,
+and `built_at`.
 
 ## 14A. Build iNat21 range-map SQLite store
 
 Create an offline or startup-managed process that downloads the iNat21 open
-range maps, parses them, maps range geometry into H3 cells, and writes the local
-SQLite range store used by the Species Range Prior Service.
+range maps in parallel, parses them, stores range geometry as WKB rows with an
+SQLite RTree, and writes the local SQLite range store used by the Species Range
+Prior Service.
 
 This stage is not part of request-time `/identify` behavior.
 
 Deliverables:
 
 1. Config for the iNat21 range-map source URL or local archive path.
-2. Downloader or local-file loader.
-3. Parser for the range-map source format.
-4. H3 rasterization or cell-covering logic.
-5. SQLite writer for `range_cells`.
+2. Parallel downloader or local-file loader.
+3. GeoPackage parser for the range-map source format.
+4. Geometry normalization and bounds extraction.
+5. SQLite writer for `range_geometries` and `range_geometries_rtree`.
 6. SQLite metadata writer for `range_store_metadata`.
 7. Validation command or setup function.
 8. Integration tests using a tiny fixture dataset.
@@ -1592,12 +1608,57 @@ Deliverables:
 Acceptance criteria:
 
 1. The builder creates a valid SQLite database.
-2. The database contains `range_cells`.
+2. The database contains `range_geometries` and `range_geometries_rtree`.
 3. The database contains `range_store_metadata`.
-4. The metadata includes `h3_resolution`.
+4. The metadata includes `geometry_format=wkb`.
 5. The request-time app does not download range maps.
 6. The request-time app does not parse raw range-map archives.
 7. `/identify` only reads from the compiled SQLite store.
+8. This is one of several pre-operational tasks to execute. These tasks can be
+   run as a group through `make preop` and individually through specific `make`
+   commands.
+
+Startup integration can call the same pre-operational runner in a later
+application startup step. Do not call pre-operational tasks from request-time
+`/identify`, `IdentifyPipeline.identify`, or the request-time prior service.
+
+Other pre-operational tasks include:
+ * Downloading the detector model
+ * Downloading the species classifier model
+
+Implementation files:
+
+```text
+src/wild_catalog/preop/
+src/wild_catalog/prior/build/
+```
+
+`src/wild_catalog/prior/build/geopackage.py` uses Pyogrio Arrow reads and
+Shapely WKB conversion to avoid adding GeoPandas. `src/wild_catalog/prior/build/sqlite_staging.py`
+contains optional SQLite `ATTACH` helpers for GeoPackage layer staging. H3 is not
+used to precompute the primary store; it is only an optional request-time cache
+key.
+
+The pre-operational builder logs progress at regular intervals while processing
+GeoPackage geometries so large range-map builds do not run silently. Include the
+target SQLite database path, percent complete, processed range count, submitted
+row count, and estimated time remaining in progress logs.
+
+Range-cell rows must be streamed into SQLite in batches. Do not accumulate the
+full H3 coverage in a Python set for the complete iNaturalist range-map corpus;
+use the SQLite primary key plus `INSERT OR IGNORE` for deduplication.
+
+Tests for the builder live under collected pytest paths such as:
+
+```text
+tests/unit/prior/test_build_metadata.py
+tests/unit/prior/test_build_sqlite_writer.py
+tests/unit/prior/test_build_validate.py
+tests/unit/preop/test_runner.py
+tests/integration/prior/test_range_store_builder.py
+```
+
+Avoid test directories named `build`, because pytest ignores those by default.
 
 ---
 

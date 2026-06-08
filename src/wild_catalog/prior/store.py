@@ -1,70 +1,88 @@
 import sqlite3
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Protocol
 
 
 class SpeciesRangeStore(Protocol):
-    def get_present_taxon_ids_for_cell(self, h3_cell: str) -> set[int]:
+    def get_candidate_geometries_for_point(
+        self,
+        *,
+        latitude: float,
+        longitude: float,
+    ) -> list[tuple[int, bytes]]:
         ...
 
-    def contains_taxon_in_cell(self, *, h3_cell: str, taxon_id: int) -> bool:
+    def get_candidate_geometries_for_taxa_at_point(
+        self,
+        *,
+        latitude: float,
+        longitude: float,
+        taxon_ids: Iterable[int],
+    ) -> list[tuple[int, bytes]]:
         ...
 
-    def get_h3_resolution(self) -> int:
-        ...
 
-
-class SQLiteSpeciesRangeStore:
+class SQLiteSpeciesRangeStore(SpeciesRangeStore):
     def __init__(self, database_path: Path) -> None:
         self._database_path = database_path
         self._connection: sqlite3.Connection | None = None
 
-    def get_present_taxon_ids_for_cell(self, h3_cell: str) -> set[int]:
+    def get_candidate_geometries_for_point(
+        self,
+        *,
+        latitude: float,
+        longitude: float,
+    ) -> list[tuple[int, bytes]]:
         connection = self._get_connection()
 
         rows = connection.execute(
             """
-            SELECT taxon_id
-            FROM range_cells
-            WHERE h3_cell = ?
+            SELECT range_geometries.taxon_id, range_geometries.geometry_wkb
+            FROM range_geometries_rtree
+            JOIN range_geometries
+              ON range_geometries.id = range_geometries_rtree.id
+            WHERE range_geometries_rtree.min_lon <= ?
+              AND range_geometries_rtree.max_lon >= ?
+              AND range_geometries_rtree.min_lat <= ?
+              AND range_geometries_rtree.max_lat >= ?
             """,
-            (h3_cell,),
+            (longitude, longitude, latitude, latitude),
         ).fetchall()
 
-        return {int(row[0]) for row in rows}
+        return [(int(row[0]), bytes(row[1])) for row in rows]
 
-    def contains_taxon_in_cell(self, *, h3_cell: str, taxon_id: int) -> bool:
+    def get_candidate_geometries_for_taxa_at_point(
+        self,
+        *,
+        latitude: float,
+        longitude: float,
+        taxon_ids: Iterable[int],
+    ) -> list[tuple[int, bytes]]:
+        requested_taxon_ids = sorted(set(taxon_ids))
+
+        if not requested_taxon_ids:
+            return []
+
         connection = self._get_connection()
+        placeholders = ", ".join("?" for _ in requested_taxon_ids)
 
-        row = connection.execute(
-            """
-            SELECT 1
-            FROM range_cells
-            WHERE h3_cell = ?
-              AND taxon_id = ?
-            LIMIT 1
+        rows = connection.execute(
+            f"""
+            SELECT range_geometries.taxon_id, range_geometries.geometry_wkb
+            FROM range_geometries_rtree
+            JOIN range_geometries
+              ON range_geometries.id = range_geometries_rtree.id
+            WHERE range_geometries_rtree.min_lon <= ?
+              AND range_geometries_rtree.max_lon >= ?
+              AND range_geometries_rtree.min_lat <= ?
+              AND range_geometries_rtree.max_lat >= ?
+              AND range_geometries.taxon_id IN ({placeholders})
             """,
-            (h3_cell, taxon_id),
-        ).fetchone()
+            (longitude, longitude, latitude, latitude, *requested_taxon_ids),
+        ).fetchall()
 
-        return row is not None
-
-    def get_h3_resolution(self) -> int:
-        connection = self._get_connection()
-
-        row = connection.execute(
-            """
-            SELECT value
-            FROM range_store_metadata
-            WHERE key = 'h3_resolution'
-            LIMIT 1
-            """
-        ).fetchone()
-
-        if row is None:
-            raise ValueError("Range store metadata is missing required key: h3_resolution")
-
-        return int(row[0])
+        return [(int(row[0]), bytes(row[1])) for row in rows]
 
     def close(self) -> None:
         if self._connection is not None:

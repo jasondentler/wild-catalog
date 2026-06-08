@@ -82,7 +82,9 @@ sequenceDiagram
 6. The logit conditioning layer should operate on tensors and prior vectors only.
 7. Taxonomy enrichment should use classifier class-index metadata rather than assuming one hard-coded taxonomy forever.
 8. Platform image conversion is isolated inside the image conversion service.
-9. Request-time range lookup reads from a local SQLite database keyed by H3 cells; downloading, parsing, and compiling raw range maps happens outside `/identify`.
+9. Request-time range lookup reads WKB geometries from a local SQLite database
+   through an RTree candidate query; downloading, parsing, and compiling raw
+   range maps happens outside `/identify`.
 
 ## Components
 
