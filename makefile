@@ -1,4 +1,4 @@
-.PHONY: all clean venv install install-hooks license-check lint lint-fix test test-fast check-prereqs serve pr preop preop-range-maps
+.PHONY: all clean venv install install-hooks license-check lint lint-fix test test-fast check-prereqs serve pr preop preop-taxonomy-dwca preop-range-maps preop-classifier-model preop-detector-model
 
 # 1. Detect Operating System and set path/variable rules
 ifeq ($(OS),Windows_NT)
@@ -41,6 +41,7 @@ check-prereqs:
 # 3. Clean old virtual environment
 clean:
 	-$(RM_RF) .venv
+	-$(RM_RF) data
 
 # 4. Create a new virtual environment
 venv: check-prereqs
@@ -82,8 +83,17 @@ serve:
 preop:
 	$(VENV_BIN)/python -m wild_catalog.preop.cli
 
+preop-taxonomy-dwca:
+	$(VENV_BIN)/python -m wild_catalog.taxonomy.preop
+
 preop-range-maps:
 	$(VENV_BIN)/python -m wild_catalog.prior.build.cli
+
+preop-classifier-model:
+	$(VENV_BIN)/python -m wild_catalog.classifier.preop
+
+preop-detector-model:
+	$(VENV_BIN)/python -m wild_catalog.detection.preop
 
 # 10. Pre-PR Validation checklist (Runs updates, linter, and tests)
 pr: install lint test

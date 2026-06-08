@@ -119,9 +119,9 @@ def test_load_taxonomy_store_from_dwca_reads_inaturalist_member_shapes(tmp_path)
             "nested/VernacularNames-english.csv",
             "\n".join(
                 [
-                    "id,vernacularName,language,locality,countryCode",
-                    "1,Animals,en,,",
-                    "3,Birds,en,,",
+                    "id,vernacularName,language,locality,countryCode,source,lexicon,created",
+                    "1,Animals,en,,,test-source,English,2022-01-01T00:00:00Z",
+                    "3,Birds,en,,,test-source,English,2022-01-02T00:00:00Z",
                 ]
             ),
         )
@@ -142,6 +142,9 @@ def test_load_taxonomy_store_from_dwca_reads_inaturalist_member_shapes(tmp_path)
     assert taxon is not None
     assert taxon.parent_taxon_id == 1
     assert tuple(record.name for record in store.get_common_names(3)) == ("Birds", "Aves")
+    assert store.get_common_names(3)[0].source == "test-source"
+    assert store.get_common_names(3)[0].lexicon == "English"
+    assert store.get_common_names(3)[0].created == "2022-01-02T00:00:00Z"
 
 
 def _fake_urlopen(payload: bytes):

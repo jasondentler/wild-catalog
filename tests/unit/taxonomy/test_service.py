@@ -98,6 +98,85 @@ def test_enrich_predictions_resolves_accepted_taxon() -> None:
     assert enriched[0].taxonomy[-1] == "Aves"
 
 
+def test_enrich_predictions_resolves_model_taxonomy_drift_from_taxonomy_store() -> None:
+    store = InMemoryTaxonomyStore(
+        taxa_by_id={
+            1: TaxonRecord(1, "Animalia", "kingdom", None),
+            2: TaxonRecord(2, "Chordata", "phylum", 1),
+            3: TaxonRecord(3, "Aves", "class", 2),
+            4: TaxonRecord(4, "Suliformes", "order", 3),
+            5: TaxonRecord(5, "Phalacrocoracidae", "family", 4),
+            6: TaxonRecord(6, "Nannopterum", "genus", 5),
+            7: TaxonRecord(7, "Nannopterum brasilianum", "species", 6),
+        },
+        common_names_by_taxon_id={
+            7: (
+                CommonNameRecord(
+                    taxon_id=7,
+                    locale="en",
+                    name="Neotropic Cormorant",
+                    created="2022-05-16T13:14:57Z",
+                ),
+            )
+        },
+    )
+    service = TaxonomyService(Settings(), store=store)
+    class_index = ClassIndex(
+        id="inat21",
+        taxon_id_by_class_id={4575: 4575},
+        scientific_name_by_class_id={4575: "Phalacrocorax brasilianus"},
+        taxonomy_path_by_class_id={
+            4575: (
+                "Animalia",
+                "Chordata",
+                "Aves",
+                "Suliformes",
+                "Phalacrocoracidae",
+                "Phalacrocorax",
+                "brasilianus",
+            )
+        },
+    )
+
+    enriched = service.enrich_predictions(
+        predictions=[ClassPrediction(class_id=4575, confidence=0.95)],
+        class_index=class_index,
+        common_name_language="en-US",
+        presence_by_taxon_id={7: True},
+    )
+
+    assert enriched[0].taxon_id == 7
+    assert enriched[0].accepted_taxon_id == 7
+    assert enriched[0].is_present is True
+    assert enriched[0].taxonomy[-1] == "Nannopterum brasilianum"
+    assert enriched[0].taxonomy_common_names[-1] == "Neotropic Cormorant"
+
+
+def test_resolve_class_index_maps_model_taxonomy_drift_for_prior_use() -> None:
+    store = InMemoryTaxonomyStore(
+        taxa_by_id={
+            1: TaxonRecord(1, "Animalia", "kingdom", None),
+            2: TaxonRecord(2, "Phalacrocoracidae", "family", 1),
+            3: TaxonRecord(3, "Nannopterum", "genus", 2),
+            4: TaxonRecord(4, "Nannopterum brasilianum", "species", 3),
+        },
+    )
+    service = TaxonomyService(Settings(), store=store)
+    class_index = ClassIndex(
+        id="inat21",
+        taxon_id_by_class_id={0: 4575},
+        scientific_name_by_class_id={0: "Phalacrocorax brasilianus"},
+        taxonomy_path_by_class_id={
+            0: ("Animalia", "Phalacrocoracidae", "Phalacrocorax", "brasilianus")
+        },
+    )
+
+    resolved_class_index = service.resolve_class_index(class_index)
+
+    assert resolved_class_index.taxon_id_by_class_id == {0: 4}
+    assert resolved_class_index.scientific_name_by_class_id == {0: "Phalacrocorax brasilianus"}
+
+
 def test_enrich_predictions_defaults_missing_presence_to_false() -> None:
     service = TaxonomyService(Settings(), store=make_store())
     class_index = ClassIndex(

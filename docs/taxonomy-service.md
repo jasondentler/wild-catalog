@@ -151,7 +151,7 @@ Each record contains:
 ## Suggested Internal Types
 
 ```python
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Protocol, Sequence
 
 
@@ -164,8 +164,9 @@ class ClassPrediction:
 @dataclass(frozen=True, slots=True)
 class ClassIndex:
     id: str
-    classifier_backend: str
     taxon_id_by_class_id: Mapping[int, int]
+    scientific_name_by_class_id: Mapping[int, str] = field(default_factory=dict)
+    taxonomy_path_by_class_id: Mapping[int, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,6 +184,9 @@ class CommonNameRecord:
     taxon_id: int
     locale: str
     name: str
+    source: str = ""
+    lexicon: str = ""
+    created: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +209,9 @@ class EnrichedPrediction:
 
 
 class TaxonomyService(Protocol):
+    def resolve_class_index(self, class_index: ClassIndex) -> ClassIndex:
+        ...
+
     def enrich_predictions(
         self,
         predictions: Sequence[ClassPrediction],
@@ -260,6 +267,11 @@ is unavailable.
 Locale matching is case-insensitive and accepts both hyphen and underscore
 separators, such as `en-US` and `en_US`.
 
+When multiple common names match the same fallback tier, the service may use
+DarwinCore Archive metadata to choose among them. The current implementation
+uses the `created` value from the vernacular-name row when available, while
+preserving insertion order when records do not provide a usable tie-break.
+
 ## Taxonomy Lineage Resolution
 
 For each predicted taxon:
@@ -291,16 +303,34 @@ The `taxonomy` and `taxonomy_common_names` arrays must have matching indexes.
 Classifier models are trained against fixed class indexes. Taxonomy changes over
 time as taxa are renamed, split, lumped, or reclassified.
 
-The Taxonomy Service should support explicit mapping between:
+Taxonomy drift resolution belongs to the Taxonomy Service, not to classifier
+plugins. Classifier plugins may expose the model's training taxonomy metadata,
+such as a scientific name and classifier label lineage, but they should not
+hard-code drift maps.
+
+The service resolves classifier classes through the local DarwinCore Archive
+store by using:
 
 ```text
 classifier class ID
-→ model training taxon ID
-→ current accepted taxon ID
+-> classifier-provided model taxon ID and model taxonomy metadata
+-> local DarwinCore Archive taxon records
+-> current accepted taxon ID and lineage
 ```
 
 This allows Wild Catalog to keep model compatibility stable while returning
 current taxonomy where a reliable mapping exists.
+
+For model taxonomies that contain stale scientific names, the service first
+tries an exact scientific-name lookup in the local taxonomy store. If that fails,
+it may use model lineage context, such as family plus specific epithet, to find a
+current species in the same family. For example, an iNat21 class label that
+contains `Phalacrocorax brasilianus` can resolve through the local iNaturalist
+taxonomy data to the current `Nannopterum brasilianum` record.
+
+The service also exposes `resolve_class_index(class_index)`. Callers should use
+the resolved class index before geographic prior generation so the Species Range
+Prior Service sees the same current taxon IDs that enrichment will return.
 
 If no reliable drift mapping exists, the service should prefer a conservative
 response using the model's original taxon mapping rather than inventing a newer
@@ -328,6 +358,21 @@ class ClassifierMetadata:
 
 The Taxonomy Service should use `class_index_id` and the classifier-provided
 class-index mapping to resolve class IDs correctly.
+
+Classifier class-index metadata may include:
+
+```python
+@dataclass(frozen=True, slots=True)
+class ClassIndex:
+    id: str
+    taxon_id_by_class_id: Mapping[int, int]
+    scientific_name_by_class_id: Mapping[int, str] = field(default_factory=dict)
+    taxonomy_path_by_class_id: Mapping[int, tuple[str, ...]] = field(default_factory=dict)
+```
+
+`taxon_id_by_class_id` remains the required fallback mapping. The optional
+scientific-name and taxonomy-path mappings give the Taxonomy Service enough
+model-training context to resolve taxonomy drift from the local DWCA store.
 
 ## Request-Time Behavior
 
@@ -434,7 +479,10 @@ Recommended tests:
 * Missing localized common name falls back to English.
 * Missing common name falls back to scientific name.
 * `taxonomy` and `taxonomy_common_names` arrays have the same length.
-* Taxonomy drift mapping resolves accepted taxon IDs correctly.
+* Taxonomy drift resolves through the taxonomy store, not classifier hard-coded
+  maps.
+* `resolve_class_index` maps stale model class taxa to current taxonomy before
+  prior generation.
 * Unknown class ID returns a controlled error.
 * `is_present` is attached from `presence_by_taxon_id`.
 * Request-time enrichment does not perform network calls.
@@ -483,7 +531,8 @@ The first implementation should be intentionally simple:
 6. Add request-time enrichment against the compiled local store.
 7. Add classifier class-index compatibility checks.
 8. Add localization fallback behavior.
-9. Add taxonomy drift mapping only after the basic lookup flow is stable.
+9. Add taxonomy drift handling in the Taxonomy Service after the basic lookup
+   flow is stable.
 
 ## Summary
 

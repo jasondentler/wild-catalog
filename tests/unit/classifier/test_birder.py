@@ -5,7 +5,12 @@ import pytest
 import torch
 from PIL import Image
 
-from wild_catalog.classifier.birder import BirderSpeciesClassifier
+from wild_catalog.classifier.birder import (
+    BirderSpeciesClassifier,
+    _scientific_name_from_label,
+    _taxon_id_from_label,
+    _taxonomy_path_from_label,
+)
 from wild_catalog.core.config import Settings
 
 
@@ -22,7 +27,10 @@ def test_birder_classifier_metadata_placeholder() -> None:
     assert metadata.taxonomy_source == "inat21"
 
 
-def test_birder_classifier_predict_species_returns_logits_with_fake_loader(monkeypatch) -> None:
+def test_birder_classifier_predict_species_returns_logits_with_fake_loader(
+    monkeypatch,
+    tmp_path,
+) -> None:
     class FakeModel(torch.nn.Module):
         def forward(self, batch: torch.Tensor) -> torch.Tensor:
             return torch.ones((batch.shape[0], 2), dtype=torch.float32)
@@ -32,6 +40,9 @@ def test_birder_classifier_predict_species_returns_logits_with_fake_loader(monke
         return torch.zeros((3, 8, 8), dtype=torch.float32)
 
     def fake_loader(*args, **kwargs):
+        assert kwargs["dst"] == tmp_path / "models" / "hieradet_d_small_dino-v2-inat21.pt"
+        assert kwargs["dst"].parent.exists()
+
         return (
             FakeModel(),
             SimpleNamespace(class_to_idx={"100 cormorant": 0, "200 heron": 1}),
@@ -43,7 +54,12 @@ def test_birder_classifier_predict_species_returns_logits_with_fake_loader(monke
         "birder",
         SimpleNamespace(load_pretrained_model_and_transform=fake_loader),
     )
-    classifier = BirderSpeciesClassifier(Settings(classifier_batch_size=1))
+    classifier = BirderSpeciesClassifier(
+        Settings(
+            classifier_batch_size=1,
+            classifier_model_cache_path=tmp_path / "models",
+        )
+    )
 
     output = classifier.predict_species(
         [
@@ -72,3 +88,19 @@ def test_birder_classifier_load_failure_is_clear(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="Unable to load Birder model"):
         classifier.predict_species([Image.new("RGB", (10, 10))])
+
+
+def test_birder_label_helpers_extract_model_taxonomy_metadata() -> None:
+    label = "04575_Animalia_Chordata_Aves_Suliformes_Phalacrocoracidae_Phalacrocorax_brasilianus"
+
+    assert _taxon_id_from_label(label, 4575) == 4575
+    assert _scientific_name_from_label(label) == "Phalacrocorax brasilianus"
+    assert _taxonomy_path_from_label(label) == (
+        "Animalia",
+        "Chordata",
+        "Aves",
+        "Suliformes",
+        "Phalacrocoracidae",
+        "Phalacrocorax",
+        "brasilianus",
+    )

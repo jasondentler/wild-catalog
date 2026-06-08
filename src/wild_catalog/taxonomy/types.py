@@ -17,6 +17,9 @@ class CommonNameRecord:
     taxon_id: int
     locale: str
     name: str
+    source: str = ""
+    lexicon: str = ""
+    created: str = ""
 
 
 @dataclass(frozen=True, slots=True)

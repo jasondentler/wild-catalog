@@ -1,7 +1,9 @@
 import logging
 from collections.abc import Sequence
 
+from wild_catalog.classifier.preop import preop_classifier_model
 from wild_catalog.core.config import Settings
+from wild_catalog.detection.preop import preop_detector_model
 from wild_catalog.preop.runner import run_preoperational_tasks
 from wild_catalog.preop.tasks import FunctionPreOperationalTask, PreOperationalTask
 from wild_catalog.prior.build.builder import build_inat21_range_map_store
@@ -17,6 +19,14 @@ def build_preoperational_tasks(settings: Settings) -> Sequence[PreOperationalTas
         FunctionPreOperationalTask(
             name="build-inat21-range-map-store",
             action=lambda: build_inat21_range_map_store(settings),
+        ),
+        FunctionPreOperationalTask(
+            name="download-classifier-model",
+            action=lambda: preop_classifier_model(settings),
+        ),
+        FunctionPreOperationalTask(
+            name="download-detector-model",
+            action=lambda: preop_detector_model(settings),
         ),
     )
 

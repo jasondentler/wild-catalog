@@ -104,9 +104,7 @@ def load_taxonomy_store_from_dwca(
 
         for vernacular_member_name in vernacular_member_names:
             with archive.open(vernacular_member_name) as vernacular_file:
-                reader = csv.DictReader(
-                    line.decode("utf-8") for line in vernacular_file
-                )
+                reader = csv.DictReader(line.decode("utf-8") for line in vernacular_file)
 
                 for row in reader:
                     taxon_id = _required_common_name_taxon_id(row)
@@ -121,14 +119,16 @@ def load_taxonomy_store_from_dwca(
                             taxon_id=taxon_id,
                             locale=locale,
                             name=name,
+                            source=row.get("source", ""),
+                            lexicon=row.get("lexicon", ""),
+                            created=row.get("created", ""),
                         )
                     )
 
     return InMemoryTaxonomyStore(
         taxa_by_id=taxa_by_id,
         common_names_by_taxon_id={
-            taxon_id: tuple(records)
-            for taxon_id, records in common_names_by_taxon_id.items()
+            taxon_id: tuple(records) for taxon_id, records in common_names_by_taxon_id.items()
         },
     )
 
@@ -147,8 +147,7 @@ def _find_member_name(
 
     if required:
         raise ValueError(
-            "DarwinCore Archive is missing required member. "
-            f"Tried: {', '.join(candidates)}"
+            f"DarwinCore Archive is missing required member. Tried: {', '.join(candidates)}"
         )
 
     return None
@@ -158,8 +157,7 @@ def _find_vernacular_member_names(archive: ZipFile) -> tuple[str, ...]:
     return tuple(
         name
         for name in archive.namelist()
-        if Path(name).name.startswith("VernacularNames-")
-        and Path(name).suffix.lower() == ".csv"
+        if Path(name).name.startswith("VernacularNames-") and Path(name).suffix.lower() == ".csv"
     )
 
 

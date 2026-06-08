@@ -1796,6 +1796,9 @@ from wild_catalog.taxonomy.types import EnrichedPrediction
 
 
 class TaxonomyServiceProtocol(Protocol):
+    def resolve_class_index(self, class_index: ClassIndex) -> ClassIndex:
+        ...
+
     def enrich_predictions(
         self,
         predictions: Sequence[ClassPrediction],
@@ -1814,6 +1817,30 @@ class TaxonomyServiceProtocol(Protocol):
 4. Any English common name.
 5. Scientific name.
 
+When multiple common names match the same fallback tier, use metadata from the
+local DarwinCore Archive row where available to choose among them. Do not
+hard-code species-specific common-name preferences.
+
+### Taxonomy drift handling
+
+Taxonomy drift belongs to the taxonomy service. Classifier plugins may expose
+their model-training scientific names and label lineage metadata, but they must
+not hard-code taxonomy drift maps.
+
+The taxonomy service should resolve drift from the local DWCA store:
+
+1. Try the classifier-provided model scientific name as an exact taxonomy-store
+   lookup.
+2. Resolve accepted taxon IDs where the DWCA record supplies one.
+3. When the model scientific name is stale, use model lineage context plus the
+   local taxonomy store to find a current taxon where the match is reliable.
+4. Fall back to the classifier-provided taxon ID when no reliable local taxonomy
+   match exists.
+
+Callers that apply geographic priors should use
+`TaxonomyServiceProtocol.resolve_class_index()` before prior-mask generation so
+the prior service sees the same current taxon IDs that enrichment returns.
+
 ### Taxonomy service responsibilities
 
 The taxonomy service is responsible for:
@@ -1825,7 +1852,8 @@ The taxonomy service is responsible for:
 5. Returning arrays where `taxonomy` and `taxonomy_common_names` have matching
    indexes.
 6. Attaching `is_present` values received from the prior service.
-7. Handling unknown class IDs with controlled errors.
+7. Resolving classifier class-index taxon IDs before geographic prior generation.
+8. Handling unknown class IDs with controlled errors.
 
 ### Pre-operational taxonomy download
 

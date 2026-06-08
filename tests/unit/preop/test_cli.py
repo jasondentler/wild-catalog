@@ -8,4 +8,6 @@ def test_build_preoperational_tasks_includes_taxonomy_download() -> None:
     assert [task.name for task in tasks] == [
         "download-taxonomy-dwca",
         "build-inat21-range-map-store",
+        "download-classifier-model",
+        "download-detector-model",
     ]

@@ -115,6 +115,16 @@ class BirderSpeciesClassifier(SpeciesClassifier):
                 class_id: _taxon_id_from_label(label, class_id)
                 for class_id, label in class_label_by_class_id.items()
             },
+            scientific_name_by_class_id={
+                class_id: scientific_name
+                for class_id, label in class_label_by_class_id.items()
+                if (scientific_name := _scientific_name_from_label(label)) is not None
+            },
+            taxonomy_path_by_class_id={
+                class_id: taxonomy_path
+                for class_id, label in class_label_by_class_id.items()
+                if (taxonomy_path := _taxonomy_path_from_label(label))
+            },
         )
         self._metadata = ClassifierMetadata(
             backend="birder",
@@ -133,14 +143,38 @@ class BirderSpeciesClassifier(SpeciesClassifier):
             return None
 
         if cache_path.suffix:
-            return cache_path
+            destination = cache_path
+        else:
+            destination = cache_path / f"{_MODEL_ID}.pt"
 
-        return cache_path / f"{_MODEL_ID}.pt"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        return destination
 
 
-def _taxon_id_from_label(label: str, fallback: int) -> int:
+def _taxon_id_from_label(
+    label: str,
+    fallback: int,
+) -> int:
     first_token = label.replace("_", " ", 1).split(maxsplit=1)[0].strip()
     if first_token.isdecimal():
         return int(first_token)
 
     return fallback
+
+
+def _scientific_name_from_label(label: str) -> str | None:
+    taxonomy_path = _taxonomy_path_from_label(label)
+
+    if len(taxonomy_path) < 2:
+        return None
+
+    return " ".join(taxonomy_path[-2:])
+
+
+def _taxonomy_path_from_label(label: str) -> tuple[str, ...]:
+    parts = label.split("_")
+
+    if len(parts) < 2 or not parts[0].isdecimal():
+        return ()
+
+    return tuple(parts[1:])
