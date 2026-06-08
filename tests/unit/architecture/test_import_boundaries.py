@@ -46,6 +46,9 @@ def test_services_do_not_import_api_models() -> None:
     forbidden_imports = [
         "wild_catalog.api.request_models",
         "wild_catalog.api.response_models",
+        "wild_catalog.api.content_negotiation",
+        "wild_catalog.api.multipart",
+        "fastapi.responses",
     ]
 
     for package in service_packages:

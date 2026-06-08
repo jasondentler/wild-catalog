@@ -142,6 +142,8 @@ The request body must include a JSON object containing information about the med
 
 * **200 OK**: Processing completed successfully.
 * **400 Bad Request**: Malformed JSON payload, invalid GPS override, or invalid request shape.
+* **406 Not Acceptable**: `return_detected_images` was `true`, but the request
+  `Accept` header did not allow `multipart/mixed`.
 * **413 Payload Too Large**: Uploaded file or decoded image exceeds configured size limits.
 * **415 Unsupported Media Type**: Unsupported file type or unavailable platform conversion adapter.
 * **422 Unprocessable Entity**: Image appears supported but cannot be decoded or converted.
@@ -149,12 +151,33 @@ The request body must include a JSON object containing information about the med
 
 ### Content-Type Behavior
 
-If `return_detected_images` is `true`, the API forces `multipart/mixed`. The first part is always the JSON payload, followed by image parts containing cropped subject JPEGs with margin applied.
+If `return_detected_images` is `true`, the API returns `multipart/mixed` when
+the `Accept` header is missing or allows `multipart/mixed`, `multipart/*`, or
+`*/*`. The first part is always the JSON payload, followed by raw binary JPEG
+parts containing cropped subject images with margin applied. If the client
+explicitly excludes multipart responses, the API returns `406 Not Acceptable`.
 
 If `return_detected_images` is `false`, the API honors the client's `Accept` header:
 
-* `application/json`: Returns only the JSON payload. This is the default if no `Accept` header is provided.
-* `multipart/mixed`: Returns a multipart package containing only the JSON payload part.
+* `application/json`: Returns only the JSON payload. This wins even if
+  `multipart/mixed` is also listed.
+* `multipart/mixed` without `application/json`: Returns a multipart package
+  containing only the JSON payload part.
+* Missing, wildcard, or otherwise unhandled `Accept`: Returns JSON.
+
+Multipart responses use this structure:
+
+```text
+Part 1:
+  Content-Type: application/json; charset=utf-8
+  Content-Disposition: inline; name="metadata"
+
+Part 2+:
+  Content-Type: image/jpeg
+  Content-Disposition: attachment; name="crop-{index}"; filename="crop-{index}.jpg"
+```
+
+Crop JPEGs are not base64 encoded.
 
 ### Response Property Details
 
@@ -232,7 +255,8 @@ HTTP/1.1 200 OK
 Content-Type: multipart/mixed; boundary=detection_boundary
 
 --detection_boundary
-Content-Type: application/json
+Content-Type: application/json; charset=utf-8
+Content-Disposition: inline; name="metadata"
 
 [
   {
@@ -258,7 +282,7 @@ Content-Type: application/json
 ]
 --detection_boundary
 Content-Type: image/jpeg
-Content-Disposition: attachment; filename="detection_1.jpg"
+Content-Disposition: attachment; name="crop-0"; filename="crop-0.jpg"
 
 [... Binary JPEG Data for the Crop with Margin ...]
 --detection_boundary--

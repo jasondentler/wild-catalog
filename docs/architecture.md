@@ -88,6 +88,9 @@ sequenceDiagram
 10. Request-time taxonomy enrichment reads local taxonomy lookups only; it must
     not call live iNaturalist APIs or download `taxonomy.dwca.zip` during
     `/identify`.
+11. The API gateway owns content negotiation and multipart response formatting.
+    Pipeline and service layers return domain models and must not import
+    FastAPI response classes or multipart helpers.
 
 ## Components
 

@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from PIL import Image
 
 from wild_catalog.api.serializers import identify_result_to_json
-from wild_catalog.pipeline.models import IdentifyResult
+from wild_catalog.pipeline.models import IdentifiedObject, IdentifyResult
 
 
 def build_multipart_response(
@@ -23,7 +23,7 @@ def build_multipart_response(
 
     return Response(
         content=body,
-        media_type=f"multipart/mixed; boundary={boundary}",
+        media_type=f'multipart/mixed; boundary="{boundary}"',
     )
 
 
@@ -34,14 +34,7 @@ def _build_multipart_body(
     include_images: bool,
 ) -> bytes:
     parts: list[bytes] = [
-        _part(
-            boundary=boundary,
-            headers={
-                "Content-Type": "application/json",
-                "Content-Disposition": 'inline; name="metadata"',
-            },
-            body=json.dumps(identify_result_to_json(result)).encode("utf-8"),
-        )
+        _build_json_part(json_payload=identify_result_to_json(result))
     ]
 
     if include_images:
@@ -50,41 +43,71 @@ def _build_multipart_body(
                 continue
 
             parts.append(
-                _part(
-                    boundary=boundary,
-                    headers={
-                        "Content-Type": "image/jpeg",
-                        "Content-Disposition": (
-                            f'inline; name="detected_image_{index}"; '
-                            f'filename="detected_image_{index}.jpg"'
-                        ),
-                    },
-                    body=_encode_image_as_jpeg(identified_object.cropped_image),
+                _build_jpeg_part(
+                    identified_object=identified_object,
+                    index=index,
                 )
             )
 
-    parts.append(f"--{boundary}--\r\n".encode("ascii"))
-    return b"".join(parts)
+    return _join_multipart_parts(parts, boundary=boundary)
 
 
-def _part(
+def _build_json_part(*, json_payload: object) -> bytes:
+    payload = json.dumps(json_payload, separators=(",", ":")).encode("utf-8")
+    headers = [
+        b"Content-Type: application/json; charset=utf-8",
+        b'Content-Disposition: inline; name="metadata"',
+    ]
+
+    return _build_part(headers=headers, payload=payload)
+
+
+def _build_jpeg_part(
     *,
-    boundary: str,
-    headers: dict[str, str],
-    body: bytes,
+    identified_object: IdentifiedObject,
+    index: int,
 ) -> bytes:
-    header_lines = [f"--{boundary}"]
-    header_lines.extend(f"{key}: {value}" for key, value in headers.items())
+    if identified_object.cropped_image is None:
+        raise ValueError("Cannot build JPEG part without cropped image.")
 
-    return (
-        "\r\n".join(header_lines).encode("ascii")
-        + b"\r\n\r\n"
-        + body
-        + b"\r\n"
+    headers = [
+        b"Content-Type: image/jpeg",
+        (
+            f'Content-Disposition: attachment; name="crop-{index}"; '
+            f'filename="crop-{index}.jpg"'
+        ).encode(),
+    ]
+
+    return _build_part(
+        headers=headers,
+        payload=_encode_image_as_jpeg(identified_object.cropped_image),
     )
+
+
+def _build_part(*, headers: list[bytes], payload: bytes) -> bytes:
+    return b"\r\n".join([*headers, b"", payload])
+
+
+def _join_multipart_parts(parts: list[bytes], *, boundary: str) -> bytes:
+    boundary_bytes = boundary.encode("ascii")
+    body = bytearray()
+
+    for part in parts:
+        body.extend(b"--")
+        body.extend(boundary_bytes)
+        body.extend(b"\r\n")
+        body.extend(part)
+        body.extend(b"\r\n")
+
+    body.extend(b"--")
+    body.extend(boundary_bytes)
+    body.extend(b"--\r\n")
+
+    return bytes(body)
 
 
 def _encode_image_as_jpeg(image: Image.Image) -> bytes:
     output = BytesIO()
-    image.convert("RGB").save(output, format="JPEG")
+    rgb_image = image if image.mode == "RGB" else image.convert("RGB")
+    rgb_image.save(output, format="JPEG", quality=90, optimize=True)
     return output.getvalue()

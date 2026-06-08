@@ -1,10 +1,15 @@
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
+from wild_catalog.api.content_negotiation import (
+    NotAcceptableResponseError,
+    ResponseFormat,
+    select_identify_response_format,
+)
 from wild_catalog.api.dependencies import get_identify_pipeline
 from wild_catalog.api.mappers import identify_request_to_command
 from wild_catalog.api.multipart import build_multipart_response
@@ -34,17 +39,27 @@ async def identify(
 
     identify_command = identify_request_to_command(identify_request)
 
+    try:
+        response_selection = select_identify_response_format(
+            accept_header=request.headers.get("accept"),
+            return_detected_images=identify_request.return_detected_images,
+        )
+    except NotAcceptableResponseError as error:
+        raise HTTPException(
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
+            detail=str(error),
+        ) from error
+
     result = await run_in_threadpool(
         pipeline.identify,
         image.file,
         identify_command,
     )
 
-    if identify_command.return_detected_images:
-        return build_multipart_response(result, include_images=True)
-
-    accept_header = request.headers.get("accept")
-    if accept_header and "multipart/mixed" in accept_header:
-        return build_multipart_response(result, include_images=False)
+    if response_selection.response_format is ResponseFormat.MULTIPART:
+        return build_multipart_response(
+            result,
+            include_images=response_selection.include_images,
+        )
 
     return JSONResponse(content=identify_result_to_json(result))

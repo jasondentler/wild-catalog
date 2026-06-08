@@ -2018,16 +2018,35 @@ src/wild_catalog/api/multipart.py
 
 Response behavior:
 
-1. If `return_detected_images=true`, always return `multipart/mixed`.
-2. If `return_detected_images=false` and `Accept: multipart/mixed`, return
-   multipart with only the JSON part.
-3. Otherwise return normal JSON.
+1. If `return_detected_images=true` and `Accept` allows `multipart/mixed`,
+   `multipart/*`, or `*/*`, return `multipart/mixed`.
+2. If `return_detected_images=true` and `Accept` is missing, return
+   `multipart/mixed`.
+3. If `return_detected_images=true` and `Accept` does not allow
+   `multipart/mixed`, return `406 Not Acceptable`.
+4. If `return_detected_images=false` and `Accept` includes `application/json`,
+   return normal JSON, even when `multipart/mixed` is also accepted.
+5. If `return_detected_images=false` and `Accept` includes `multipart/mixed`
+   but not `application/json`, return multipart with only the JSON part.
+6. Otherwise return normal JSON.
 
 The first multipart part must always be the JSON payload.
 
 Subsequent parts contain crop JPEGs only when `return_detected_images=true`.
 
 Do not base64 encode crop images.
+
+Multipart part headers:
+
+```text
+Part 1:
+  Content-Type: application/json; charset=utf-8
+  Content-Disposition: inline; name="metadata"
+
+Part 2+:
+  Content-Type: image/jpeg
+  Content-Disposition: attachment; name="crop-{index}"; filename="crop-{index}.jpg"
+```
 
 ---
 
