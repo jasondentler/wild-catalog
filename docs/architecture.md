@@ -53,7 +53,7 @@ sequenceDiagram
 
     Gateway->>PriorServ: Fetch prior mask for GPS + classifier class index
     activate PriorServ
-    Note over PriorServ: Classifier-aware prior lookup. Returns all-ones mask when GPS or compatible data is unavailable.
+    Note over PriorServ: Classifier-aware SQLite/H3 prior lookup. Returns all-ones mask when GPS is missing.
     PriorServ-->>Gateway: Return spatial prior mask G of length N
     deactivate PriorServ
 
@@ -82,6 +82,7 @@ sequenceDiagram
 6. The logit conditioning layer should operate on tensors and prior vectors only.
 7. Taxonomy enrichment should use classifier class-index metadata rather than assuming one hard-coded taxonomy forever.
 8. Platform image conversion is isolated inside the image conversion service.
+9. Request-time range lookup reads from a local SQLite database keyed by H3 cells; downloading, parsing, and compiling raw range maps happens outside `/identify`.
 
 ## Components
 

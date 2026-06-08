@@ -67,3 +67,19 @@ def test_pipeline_does_not_import_concrete_classifier_plugins() -> None:
 
         for forbidden_import in forbidden_imports:
             assert forbidden_import not in text, f"{path} must not import {forbidden_import}"
+
+
+def test_prior_import_boundaries() -> None:
+    forbidden_imports = [
+        "wild_catalog.api",
+        "wild_catalog.taxonomy",
+        "wild_catalog.pipeline",
+        "wild_catalog.classifier.birder",
+        "BirderSpeciesClassifier",
+    ]
+
+    for path in read_python_files("prior"):
+        text = path.read_text()
+
+        for forbidden_import in forbidden_imports:
+            assert forbidden_import not in text, f"{path} must not import {forbidden_import}"

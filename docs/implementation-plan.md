@@ -1498,7 +1498,7 @@ src/wild_catalog/prior/types.py
 src/wild_catalog/prior/stub.py
 ```
 
-The prior service uses GPS coordinates and range-map data to:
+The prior service uses GPS coordinates and locally stored SQLite range-map data to:
 
 1. Build a prior mask aligned with the active classifier class index.
 2. Determine `is_present` for predicted taxa.
@@ -1537,14 +1537,67 @@ class SpeciesRangePrior(Protocol):
 Behavior:
 
 1. If GPS is missing, return an all-ones prior mask.
-2. If GPS is missing, treat `is_present` as `True` or `None` according to final
-   API policy. Recommended initial behavior: `True`, because there is no
-   location evidence against the taxon.
+2. If GPS is missing, treat `is_present` as `True`, because there is no location
+   evidence against the taxon.
 3. If GPS is present, map the coordinate to an H3 cell.
-4. Look up taxa known or plausible in that cell.
+4. Look up taxa known or plausible in that cell from the local SQLite store.
 5. Assign `1.0` to present taxa.
 6. Assign epsilon to not-present taxa.
 7. Return a mask with length equal to the classifier class count.
+
+The request-time prior service must not download range maps, parse raw range-map
+archives, or write the compiled SQLite range store.
+
+### SQLite range store
+
+The initial request-time schema is:
+
+```sql
+CREATE TABLE range_cells (
+    h3_cell TEXT NOT NULL,
+    taxon_id INTEGER NOT NULL,
+    PRIMARY KEY (h3_cell, taxon_id)
+);
+
+CREATE INDEX idx_range_cells_taxon_id
+ON range_cells (taxon_id);
+
+CREATE TABLE range_store_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+```
+
+The metadata table must include `h3_resolution`.
+
+## 14A. Build iNat21 range-map SQLite store
+
+Create an offline or startup-managed process that downloads the iNat21 open
+range maps, parses them, maps range geometry into H3 cells, and writes the local
+SQLite range store used by the Species Range Prior Service.
+
+This stage is not part of request-time `/identify` behavior.
+
+Deliverables:
+
+1. Config for the iNat21 range-map source URL or local archive path.
+2. Downloader or local-file loader.
+3. Parser for the range-map source format.
+4. H3 rasterization or cell-covering logic.
+5. SQLite writer for `range_cells`.
+6. SQLite metadata writer for `range_store_metadata`.
+7. Validation command or setup function.
+8. Integration tests using a tiny fixture dataset.
+
+Acceptance criteria:
+
+1. The builder creates a valid SQLite database.
+2. The database contains `range_cells`.
+3. The database contains `range_store_metadata`.
+4. The metadata includes `h3_resolution`.
+5. The request-time app does not download range maps.
+6. The request-time app does not parse raw range-map archives.
+7. `/identify` only reads from the compiled SQLite store.
 
 ---
 
