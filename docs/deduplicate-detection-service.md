@@ -88,3 +88,9 @@ The exact ranking should remain configuration-friendly because detector behavior
 ## Performance notes
 
 The input list should already be capped by `WILD_CATALOG_MAX_DETECTIONS`, so a simple readable implementation is preferred over complex spatial indexing. Optimize only if benchmarks show the deduplication stage matters.
+
+## Integration with real detector output
+
+Once Grounding DINO is implemented, deduplication tests should include realistic overlapping open-vocabulary labels such as `bird` + `animal`, `flower` + `plant`, and `mushroom` + `fungus`.
+
+Deduplication remains detector-agnostic. It should never import Grounding DINO classes directly. It should operate only on stable `Detection` objects.

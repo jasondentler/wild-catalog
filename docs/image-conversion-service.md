@@ -66,3 +66,9 @@ The conversion service applies metadata in this order:
 * Stream or spool uploads rather than duplicating large byte arrays where possible.
 * Convert to RGB once.
 * Close temporary Pillow images promptly.
+
+## Full-pipeline integration expectations
+
+Full real-pipeline integration tests should pass uploaded sample images through the conversion service before detection. These tests should verify that converted images are RGB, metadata overrides still work, and downstream detector/classifier services do not need to know the source image format.
+
+Conversion remains responsible for upload size checks, format sniffing, EXIF extraction, platform conversion, and RGB normalization. It must not load models or call taxonomy/range-prior services.

@@ -51,3 +51,11 @@ and optimized store preparation belong in pre-operational setup.
 iNaturalist Taxonomy DarwinCore Archive when no non-empty local archive exists.
 The real DWCA integration test uses the same downloader under
 `WILD_CATALOG_RUN_INTEGRATION_TESTS=1`.
+
+## Additional runtime dependency boundaries
+
+Grounding DINO and Birder dependencies should stay inside concrete plugin adapters. The API and pipeline packages should depend only on detector/classifier protocols and stable Wild Catalog domain types.
+
+Model and data asset preparation belongs to pre-operational commands and startup warmup. `/identify` must not perform first-time model downloads, parse the taxonomy archive, or build the range-map store.
+
+For production stability, bounded concurrency should protect model inference resources. Timing instrumentation should measure each major pipeline stage so performance regressions can be diagnosed without changing API contracts.

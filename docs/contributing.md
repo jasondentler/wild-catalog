@@ -254,3 +254,34 @@ Project maintainers will review your code. You may be asked to make adjustments.
 
 ## ❓ Questions or Need Help?
 If you have any questions about setting up your environment or need guidance on how to implement a feature, feel free to open a [GitHub Issue](https://github.com/jasondentler/wild-catalog/issues).
+
+## Updated model, preop, and testing workflow
+
+The real detector backend is Grounding DINO, not Ultralytics YOLO. The real classifier backend is Birder/iNaturalist 2021.
+
+Before running the full integration test suite, prepare durable assets with:
+
+```bash
+make preop
+```
+
+Specific preop commands may include:
+
+```bash
+make preop-range-maps
+make preop-classifier-model
+make preop-detector-model
+```
+
+Do not add new Makefile commands for individual tests. Real-model integration tests should live under `tests/integration/` and run through the existing `make test` behavior. Fast unit and contract tests should use stubs and fakes under `tests/unit/`.
+
+All tests must live under one of these folders:
+
+```text
+tests/unit/
+tests/integration/
+```
+
+Do not create tests directly under `tests/`.
+
+`make clean` may remove generated `data/` assets. Re-run `make preop` after cleaning if you need real-model or local-data integration tests.

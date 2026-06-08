@@ -396,3 +396,23 @@ Content-Disposition: attachment; name="crop-0"; filename="crop-0.jpg"
 ```
 
 JSON responses may omit pretty-printing whitespace in production.
+
+## Readiness, asset status, and result-quality updates
+
+`GET /status` should eventually include non-sensitive asset metadata once startup has loaded or validated each asset:
+
+```text
+detector backend and model id
+classifier backend and model id
+classifier class_index_id
+taxonomy source/version
+range-map source/version
+preload mode
+startup synthetic inference setting
+```
+
+Do not expose local filesystem paths, raw model cache paths, stack traces, or command stderr in public API responses.
+
+`POST /identify` must continue to return `503 Service Unavailable` while startup warmup is incomplete or failed. The response message must tell clients to call `GET /status` for startup progress and estimated readiness.
+
+Final prediction filtering is a pipeline/result policy concern. The API should serialize the filtered `IdentifyResult`; it should not decide species confidence thresholds itself.

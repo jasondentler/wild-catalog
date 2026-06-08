@@ -57,3 +57,19 @@ Unit tests should cover:
 * Gamma effects.
 * Top-k ordering.
 * Device and dtype consistency.
+
+## Relationship to confidence filtering
+
+The conditioning layer should remain focused on transforming raw logits into conditioned probabilities and top-k class predictions.
+
+Final result-quality policy belongs after conditioning. That later policy may decide:
+
+```text
+minimum final confidence
+minimum number of returned predictions
+maximum number of returned predictions
+whether to suppress low-confidence alternatives
+whether to return an uncertain result when all predictions are weak
+```
+
+Do not put API response filtering, taxonomy lookup, or confidence-threshold policy inside the classifier plugin or inside the logit conditioner.

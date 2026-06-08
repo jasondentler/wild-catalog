@@ -49,3 +49,9 @@ class CropResult:
 * Keep crops in RGB mode.
 * Do not encode crop images unless `return_detected_images=true`.
 * Release crop images after classification and response serialization.
+
+## Full-pipeline integration expectations
+
+Full real-pipeline integration tests should verify that real detector boxes are deduplicated before cropping, that crop boxes are clamped to image bounds, and that only the capped number of detections are cropped.
+
+The cropper must remain model-agnostic and should not know whether a box came from Grounding DINO or a future detector plugin.

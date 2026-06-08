@@ -544,3 +544,22 @@ It should remain an in-process enrichment layer backed by local compiled data
 from the iNaturalist Taxonomy DarwinCore Archive. It should not be a live network
 service, and it should not perform expensive archive parsing during `/identify`.
 ```
+
+## Preop and optimized local taxonomy store
+
+The DarwinCore Archive should be prepared outside request time.
+
+Recommended flow:
+
+```text
+taxonomy.dwca.zip
+→ parsed taxa/common-name records
+→ optimized local taxonomy store
+→ request-time TaxonomyService lookups
+```
+
+The optimized store should include source/version metadata and should support fast lookup by taxon ID, parent taxon ID, accepted taxon ID, and common-name locale.
+
+Startup should load or open the prepared taxonomy store. If the required local taxonomy data is missing or invalid, startup should mark the taxonomy task as failed in `GET /status`, and `POST /identify` should remain unavailable with `503 Service Unavailable`.
+
+`/identify` must never call live iNaturalist APIs, download `taxonomy.dwca.zip`, or parse the full DarwinCore Archive on the hot path.

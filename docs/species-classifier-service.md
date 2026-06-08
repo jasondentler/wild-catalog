@@ -150,3 +150,23 @@ make pr
 ```
 
 These tests verify the adapter contract for `hieradet_d_small_dino-v2-inat21`: model loading, RGB transforms, batching, raw logits, class-index metadata, and output shape. They are not general model-evaluation tests.
+
+## Concrete Birder iNat21 implementation requirements
+
+The Birder/iNaturalist 2021 adapter should be implemented as the default real classifier backend behind the `SpeciesClassifier` protocol.
+
+The adapter must:
+
+1. Load the configured model once per process.
+2. Use the shared torch device helper.
+3. Move the model to the selected device.
+4. Use `.eval()` and `torch.inference_mode()`.
+5. Transform RGB crops according to the model's requirements.
+6. Batch crops according to `WILD_CATALOG_SPECIES_CLASSIFIER_BATCH_SIZE`.
+7. Return raw logits, not probabilities.
+8. Expose a stable `ClassIndex` mapping classifier class IDs to iNaturalist taxon IDs.
+9. Expose `warmup()` for startup pre-warming.
+
+Class-index compatibility is a core contract. Tests should prove that classifier class IDs map to taxon IDs present in the taxonomy store and that the prior mask length matches the classifier output width.
+
+The curated integration test for `sample-images/20260402-IMG_7906.jpg` should verify the classifier/prior/conditioning/taxonomy chain identifies Neotropic Cormorant / `Nannopterum brasilianum`.

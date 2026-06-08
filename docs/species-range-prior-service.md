@@ -144,3 +144,21 @@ coordinates.
 * Cache hot spatial cells.
 * Keep prior vectors compact.
 * Validate mask length against the active classifier metadata.
+
+## Startup validation and version reporting
+
+Startup should open and lightly validate the compiled SQLite range prior store. It should not rebuild range maps on every application startup.
+
+Validation should confirm:
+
+```text
+range_geometries exists
+range_geometries_rtree exists
+range_store_metadata exists
+required metadata keys are present
+RTree row count is consistent with geometry row count
+```
+
+`GET /status` may report non-sensitive range-store metadata such as source, source version, geometry format, and build timestamp. Do not expose local filesystem paths.
+
+If the configured range-map store is missing or invalid, startup should mark the range-prior task as failed with `local_data_unavailable`, and `/identify` should return `503` until the issue is resolved.

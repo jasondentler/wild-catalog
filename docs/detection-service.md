@@ -165,3 +165,32 @@ Every detector plugin should pass shared contract tests:
 * Respects `WILD_CATALOG_MAX_DETECTIONS`.
 
 Grounding DINO-specific tests should mock model outputs in default CI and reserve real-model tests for opt-in integration test runs.
+
+## Concrete Grounding DINO implementation requirements
+
+The Grounding DINO detector plugin should be implemented as the default real detector backend behind the `ObjectDetector` protocol.
+
+Required files:
+
+```text
+src/wild_catalog/detection/grounding_dino.py
+src/wild_catalog/detection/grounding_dino_prompt.py
+src/wild_catalog/detection/grounding_dino_postprocess.py
+```
+
+The plugin must:
+
+1. Load the configured model once per process.
+2. Use the shared torch device helper.
+3. Run the configured organism prompt.
+4. Convert model boxes to `xyxy` pixel boxes.
+5. Clamp boxes to image bounds.
+6. Drop invalid boxes.
+7. Normalize labels into supported detection categories.
+8. Filter by configured box/text thresholds.
+9. Return `Detection` objects sorted by confidence.
+10. Expose `warmup()` for startup pre-warming.
+
+The detector must not classify species, call taxonomy services, apply geographic priors, crop images, or import API modules.
+
+Missing or unloadable model weights should fail startup readiness with a controlled `model_unavailable`/`503` path and should be visible through `GET /status`.

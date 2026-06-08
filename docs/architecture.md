@@ -136,3 +136,18 @@ The startup package may depend on the pipeline because it is an application orch
 8. [Logit Conditioning Layer](./logit-conditioning-layer.md)
 9. [Taxonomy Service](./taxonomy-service.md)
 10. [Deployment Guide](./deployments.md)
+
+## Added core implementation steps after startup warmup
+
+The implementation plan now includes several explicit post-startup core steps that complete the real model pipeline and make production behavior measurable:
+
+1. **Grounding DINO detector implementation**: completes the real open-vocabulary detector plugin behind the `ObjectDetector` protocol.
+2. **Birder iNat21 classifier implementation**: completes the real species classifier adapter and class-index metadata contract.
+3. **Taxonomy preop and optimized local taxonomy store**: moves DarwinCore Archive parsing out of request time and into durable local store preparation.
+4. **Asset readiness validation and version reporting**: makes `/status` report which model and data versions are loaded without exposing local filesystem paths.
+5. **Bounded identify concurrency**: protects MPS, CUDA, CPU RAM, model objects, and SQLite stores from unbounded concurrent requests.
+6. **Timing instrumentation**: records per-stage request timings for conversion, detection, cropping, classification, prior lookup, conditioning, taxonomy, serialization, and total request time.
+7. **Full real-pipeline integration tests**: verify the internal pipeline with real detector/classifier components and sample images.
+8. **Confidence filtering and result-quality policy**: defines final prediction filtering after logit conditioning and before API serialization.
+
+The pipeline remains model-agnostic. Concrete model adapters live behind detector and classifier protocols. The API layer remains responsible only for HTTP, readiness checks, content negotiation, response formatting, and error mapping.

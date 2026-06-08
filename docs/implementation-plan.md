@@ -2629,7 +2629,193 @@ Acceptance criteria:
 
 ---
 
-## 21. Add bounded concurrency
+## 21. Implement Grounding DINO detection model
+
+Create or complete the concrete Grounding DINO detector plugin:
+
+```text
+src/wild_catalog/detection/grounding_dino.py
+src/wild_catalog/detection/grounding_dino_prompt.py
+src/wild_catalog/detection/grounding_dino_postprocess.py
+```
+
+This step fills in the real detector implementation behind the pluggable detector framework. The detector answers only:
+
+```text
+Where are candidate living things in this image?
+```
+
+It must not identify species. Species identification remains the responsibility of the classifier, logit conditioning, range prior, and taxonomy layers.
+
+### Default prompt
+
+```python
+DEFAULT_GROUNDING_DINO_PROMPT = (
+    "bird . mammal . animal . reptile . amphibian . fish . "
+    "insect . butterfly . moth . beetle . dragonfly . spider . snail . "
+    "flower . plant . tree . leaf . grass . moss . lichen . "
+    "mushroom . fungus ."
+)
+```
+
+The prompt should be configurable through settings, but this default should be used unless overridden.
+
+### Responsibilities
+
+1. Load the configured Grounding DINO model.
+2. Use the shared torch device selection helper.
+3. Run inference with the configured organism prompt.
+4. Convert model boxes into pixel-space `BoundingBox` values.
+5. Clamp boxes to image bounds.
+6. Normalize labels into `DetectionCategory`.
+7. Filter unsupported labels.
+8. Filter low-confidence detections.
+9. Return stable internal `Detection` objects.
+10. Expose `warmup()` for startup pre-warming.
+
+### Settings
+
+```text
+WILD_CATALOG_DETECTOR_BACKEND=grounding-dino
+WILD_CATALOG_GROUNDING_DINO_MODEL_ID=IDEA-Research/grounding-dino-tiny
+WILD_CATALOG_GROUNDING_DINO_BOX_THRESHOLD=0.25
+WILD_CATALOG_GROUNDING_DINO_TEXT_THRESHOLD=0.25
+WILD_CATALOG_GROUNDING_DINO_PROMPT=<default organism prompt>
+```
+
+Use `src/wild_catalog/core/device.py`. Do not duplicate MPS/CUDA/CPU selection logic inside the detector.
+
+### Postprocessing
+
+`grounding_dino_postprocess.py` should:
+
+1. Convert normalized boxes to pixel coordinates.
+2. Clamp coordinates to image bounds.
+3. Drop invalid boxes with zero or negative width/height.
+4. Normalize text labels.
+5. Map labels to `DetectionCategory`.
+6. Drop labels that do not map to a supported category.
+7. Return detections sorted by descending confidence.
+
+### Startup and errors
+
+When `WILD_CATALOG_PRELOAD_MODELS=true`, startup warmup must load the Grounding DINO detector before `POST /identify` becomes ready. If the model cannot be loaded, startup status should show the detector task as failed, and `POST /identify` should return `503 Service Unavailable` until the issue is fixed.
+
+Use controlled errors:
+
+```text
+Model missing or cannot be loaded: ModelUnavailableError → 503
+Inference failure caused by model/runtime setup: ModelUnavailableError or UnprocessableImageError
+Unexpected failure: 500 through the global error handler
+```
+
+Do not expose model stack traces, local cache paths, or raw backend errors in API responses.
+
+### Tests
+
+Unit tests under `tests/unit/detection/` should cover prompt contents, label mapping, box conversion, box clamping, invalid box filtering, confidence filtering, registry construction, and `warmup()` without real weights.
+
+Integration tests under `tests/integration/detection/` should build the `grounding-dino` detector from settings, run on `sample-images/` fixtures, assert detections for obvious living subjects, assert boxes are inside image bounds, and assert labels map to supported categories.
+
+Do not add a new testing Makefile command. The real integration tests run through the existing `make test` behavior.
+
+## 22. Implement Birder iNat21 classifier model
+
+Complete the concrete Birder/iNaturalist 2021 classifier adapter behind the `SpeciesClassifier` protocol.
+
+Create or complete:
+
+```text
+src/wild_catalog/classifier/birder.py
+src/wild_catalog/classifier/transforms.py
+src/wild_catalog/classifier/registry.py
+```
+
+The adapter must:
+
+1. Load the configured Birder model once per process.
+2. Use the shared torch device helper.
+3. Move the model to the selected device.
+4. Use `.eval()` and `torch.inference_mode()`.
+5. Apply the model's required crop transforms.
+6. Batch crops according to `WILD_CATALOG_SPECIES_CLASSIFIER_BATCH_SIZE`.
+7. Return raw logits, not probabilities.
+8. Expose stable classifier metadata.
+9. Expose a `ClassIndex` mapping class IDs to iNaturalist taxon IDs.
+10. Expose `warmup()` for startup pre-warming.
+
+The classifier must not apply geographic priors, resolve taxonomy, compute common names, or call API code.
+
+### Class-index alignment
+
+The classifier class index is a core contract. Add tests proving:
+
+```text
+classifier class_id → iNaturalist taxon_id
+taxonomy store contains those taxon IDs
+prior mask length matches classifier output width
+conditioner accepts the classifier output and prior mask
+```
+
+### Integration test
+
+Keep the curated cormorant regression test under `tests/integration/pipeline/`. It should use `sample-images/20260402-IMG_7906.jpg` and assert that the classifier/prior/conditioning/taxonomy chain identifies Neotropic Cormorant / `Nannopterum brasilianum`.
+
+## 23. Implement taxonomy preop and optimized local taxonomy store
+
+Add a durable request-time taxonomy store derived from `taxonomy.dwca.zip`.
+
+Create or complete:
+
+```text
+src/wild_catalog/taxonomy/build/downloader.py
+src/wild_catalog/taxonomy/build/sqlite_writer.py
+src/wild_catalog/taxonomy/build/validate.py
+src/wild_catalog/taxonomy/store.py
+```
+
+The preop path should:
+
+1. Download or verify `taxonomy.dwca.zip`.
+2. Parse the DarwinCore Archive outside `/identify`.
+3. Build a fast local store, preferably SQLite.
+4. Store source/version metadata.
+5. Validate required tables and indexes.
+6. Reuse existing non-empty assets when valid.
+
+The request-time taxonomy service should read the prepared local store and must not parse the full archive per request.
+
+Recommended optimized lookup tables:
+
+```text
+taxa
+common_names
+taxonomy_metadata
+```
+
+Startup should load or open the prepared taxonomy store. If the required taxonomy store is missing or invalid, startup status should fail the taxonomy task with `local_data_unavailable`.
+
+## 24. Implement asset readiness validation and version reporting
+
+Define a consistent model/data asset lifecycle.
+
+Track and report:
+
+```text
+detector backend and model id
+classifier backend and model id
+classifier class_index_id
+taxonomy source/version
+range-map source/version
+preload mode
+startup synthetic inference setting
+```
+
+`make preop` prepares durable assets. FastAPI startup warms and validates assets. `/identify` never downloads models, parses DarwinCore archives, or rebuilds range maps.
+
+Extend `GET /status` so it can expose loaded asset metadata once available. Do not include local filesystem paths in public responses.
+
+## 25. Add bounded concurrency
 
 Real model inference can consume significant memory.
 
@@ -2657,7 +2843,7 @@ Start conservative. Increase only after measuring memory and latency.
 
 ---
 
-## 22. Add timing instrumentation
+## 26. Add timing instrumentation
 
 Create:
 
@@ -2692,7 +2878,51 @@ X-Wild-Catalog-Total-Time-Ms
 
 ---
 
-## 23. Testing strategy
+## 27. Implement full real-pipeline integration tests
+
+Add end-to-end integration tests for the full internal pipeline after the real detector and classifier are implemented.
+
+These tests should exercise:
+
+```text
+image conversion
+Grounding DINO detection
+deduplication
+cropping
+Birder classification
+range prior lookup
+logit conditioning
+taxonomy enrichment
+IdentifyPipeline result assembly
+```
+
+Use `sample-images/` fixtures. Avoid live iNaturalist API calls. Avoid adding a new testing Makefile command; these tests run through the existing `make test` behavior.
+
+The full pipeline test does not need to assert exact species identity for every fixture. It should prove that the real pipeline returns bounded boxes, crops, predictions, taxonomy arrays, and presence values without violating memory or import-boundary rules.
+
+## 28. Implement confidence filtering and result-quality policy
+
+Define how final predictions are filtered before API serialization.
+
+Add settings such as:
+
+```text
+WILD_CATALOG_MIN_PREDICTION_CONFIDENCE
+WILD_CATALOG_MIN_TOP_PREDICTIONS
+WILD_CATALOG_MAX_TOP_PREDICTIONS
+```
+
+Policy should answer:
+
+1. How many predictions per crop are returned.
+2. Whether low-confidence alternatives are suppressed.
+3. What happens when all predictions are weak.
+4. Whether an `uncertain` result should be returned.
+5. Whether confidence filtering happens after logit conditioning and before taxonomy serialization.
+
+The logit conditioning layer should remain focused on logits and probabilities. Result-quality filtering should live in a small pipeline/result policy layer rather than inside model plugins.
+
+## 29. Testing strategy
 
 Use default tests with stubs.
 
@@ -2790,7 +3020,7 @@ Use small fixture data for default CI.
 
 ---
 
-## 24. Performance and memory rules
+## 30. Performance and memory rules
 
 ### Hot path rules
 
@@ -2820,7 +3050,7 @@ Use small fixture data for default CI.
 
 ---
 
-## 25. Milestones
+## 31. Milestones
 
 ### Milestone 1: API shell with stubs
 
@@ -3007,7 +3237,7 @@ Acceptance criteria:
 
 ---
 
-## 26. Final implementation order
+## 32. Final implementation order
 
 Build in this order:
 
@@ -3034,7 +3264,7 @@ Build in this order:
 
 ---
 
-## 27. Summary
+## 33. Summary
 
 Wild Catalog should be implemented as a clear, modular pipeline:
 

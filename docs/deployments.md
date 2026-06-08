@@ -204,3 +204,33 @@ Before routing production traffic to an instance:
 [ ] Logs include request IDs and startup timing.
 [ ] Memory usage has been checked under expected concurrency.
 ```
+
+## Model and data asset lifecycle
+
+Wild Catalog separates durable asset preparation from startup warmup:
+
+```text
+make preop
+  prepares durable assets such as model weights, taxonomy data, and range-map stores
+
+FastAPI startup
+  validates and warms prepared assets
+
+POST /identify
+  uses warmed assets only
+```
+
+Startup should not rebuild the full range-map store, parse the DarwinCore Archive from scratch, or download model weights unless the deployment explicitly opts into that behavior. Missing or invalid required assets should make the relevant `/status` task fail and should keep `/identify` unavailable with `503 Service Unavailable`.
+
+Recommended persisted asset locations:
+
+```text
+data/models/
+data/taxonomy/
+data/range-maps/
+data/cache/
+```
+
+Use `make clean` to remove generated local `data/` state in development. Do not store sample images, source code, or documentation in `data/`.
+
+Production deployments should persist `data/` or equivalent configured cache directories between restarts so startup warmup validates and loads assets rather than downloading or rebuilding them.
