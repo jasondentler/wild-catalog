@@ -1,18 +1,29 @@
-class ImageConversionError(Exception):
+from wild_catalog.core.errors import (
+    PayloadTooLargeError,
+    UnprocessableImageError,
+    UnsupportedMediaTypeError,
+    WildCatalogError,
+)
+from wild_catalog.core.errors import (
+    PlatformConversionError as CorePlatformConversionError,
+)
+
+
+class ImageConversionError(WildCatalogError):
     """Base error for image conversion failures."""
 
 
-class UnsupportedImageFormatError(ImageConversionError):
+class UnsupportedImageFormatError(UnsupportedMediaTypeError, ImageConversionError):
     """Raised when the uploaded image format is unsupported."""
 
 
-class ImageTooLargeError(ImageConversionError):
+class ImageTooLargeError(PayloadTooLargeError, ImageConversionError):
     """Raised when the uploaded file or decoded image exceeds configured limits."""
 
 
-class InvalidImageError(ImageConversionError):
+class InvalidImageError(UnprocessableImageError, ImageConversionError):
     """Raised when image bytes cannot be decoded as the detected image type."""
 
 
-class PlatformConversionError(ImageConversionError):
+class PlatformConversionError(CorePlatformConversionError, ImageConversionError):
     """Raised when an optional platform converter fails."""

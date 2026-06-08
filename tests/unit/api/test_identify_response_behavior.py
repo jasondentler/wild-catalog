@@ -172,5 +172,5 @@ def test_identify_returns_406_when_images_requested_but_multipart_not_accepted()
     )
 
     assert response.status_code == 406
-    assert "multipart/mixed" in response.json()["detail"]
+    assert response.json()["error"]["code"] == "not_acceptable"
     assert pipeline.call_count == 0

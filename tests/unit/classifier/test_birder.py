@@ -12,6 +12,7 @@ from wild_catalog.classifier.birder import (
     _taxonomy_path_from_label,
 )
 from wild_catalog.core.config import Settings
+from wild_catalog.core.errors import ModelUnavailableError
 
 
 def test_birder_classifier_metadata_placeholder() -> None:
@@ -86,7 +87,7 @@ def test_birder_classifier_load_failure_is_clear(monkeypatch) -> None:
     )
     classifier = BirderSpeciesClassifier(Settings())
 
-    with pytest.raises(RuntimeError, match="Unable to load Birder model"):
+    with pytest.raises(ModelUnavailableError):
         classifier.predict_species([Image.new("RGB", (10, 10))])
 
 

@@ -1,6 +1,7 @@
 import pytest
 
 from wild_catalog.core.config import Settings
+from wild_catalog.core.errors import ModelUnavailableError
 from wild_catalog.detection.registry import build_detector
 from wild_catalog.detection.stub import StubObjectDetector
 
@@ -17,5 +18,5 @@ def test_build_detector_rejects_unknown_backend() -> None:
 
 
 def test_build_detector_fails_clearly_for_unimplemented_grounding_dino() -> None:
-    with pytest.raises(NotImplementedError, match="Grounding DINO detector backend"):
+    with pytest.raises(ModelUnavailableError):
         build_detector(Settings(detector_backend="grounding-dino"))

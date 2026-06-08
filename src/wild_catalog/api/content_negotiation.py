@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from wild_catalog.core.errors import NotAcceptableResponseError
+
 
 class ResponseFormat(StrEnum):
     JSON = "json"
@@ -11,10 +13,6 @@ class ResponseFormat(StrEnum):
 class ResponseSelection:
     response_format: ResponseFormat
     include_images: bool
-
-
-class NotAcceptableResponseError(ValueError):
-    """Raised when the requested response cannot satisfy the Accept header."""
 
 
 def select_identify_response_format(
@@ -36,7 +34,12 @@ def select_identify_response_format(
 
         raise NotAcceptableResponseError(
             "return_detected_images=true requires an Accept header that allows "
-            "multipart/mixed."
+            "multipart/mixed.",
+            public_detail="Requested detected images require multipart/mixed.",
+            debug_detail=(
+                "return_detected_images=true requires an Accept header that allows "
+                "multipart/mixed."
+            ),
         )
 
     if "application/json" in accepted_media_types:

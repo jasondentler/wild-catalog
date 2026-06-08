@@ -8,6 +8,7 @@ from PIL import Image
 
 from wild_catalog.conversion.exceptions import (
     ImageTooLargeError,
+    InvalidImageError,
     PlatformConversionError,
     UnsupportedImageFormatError,
 )
@@ -128,8 +129,13 @@ class ImageConversionService:
             )
         except UnsupportedImageFormatError:
             raise
+        except InvalidImageError:
+            raise
         except Exception as exc:
-            raise PlatformConversionError("Platform image conversion failed.") from exc
+            raise PlatformConversionError(
+                public_detail="Image conversion failed.",
+                debug_detail=str(exc),
+            ) from exc
 
 
 def extract_metadata_from_bytes(file_bytes: bytes) -> ExtractedMetadata:

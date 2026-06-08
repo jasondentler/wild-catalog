@@ -10,6 +10,7 @@ from wild_catalog.classifier.transforms import ensure_rgb_crops
 from wild_catalog.classifier.types import ClassifierMetadata, ClassIndex, RawClassifierOutput
 from wild_catalog.core.config import Settings
 from wild_catalog.core.device import get_torch_device
+from wild_catalog.core.errors import ModelUnavailableError
 
 _MODEL_ID = "hieradet_d_small_dino-v2-inat21"
 _CLASS_INDEX_ID = "inat21"
@@ -85,9 +86,12 @@ class BirderSpeciesClassifier(SpeciesClassifier):
         try:
             import birder
         except ImportError as exc:
-            raise RuntimeError(
-                "Unable to load Birder model `hieradet_d_small_dino-v2-inat21`. "
-                "Ensure the Birder dependency is installed."
+            raise ModelUnavailableError(
+                public_detail="A required model is unavailable.",
+                debug_detail=(
+                    "Unable to load Birder model "
+                    "`hieradet_d_small_dino-v2-inat21`: dependency is not installed."
+                ),
             ) from exc
 
         try:
@@ -99,9 +103,12 @@ class BirderSpeciesClassifier(SpeciesClassifier):
                 progress_bar=False,
             )
         except Exception as exc:
-            raise RuntimeError(
-                "Unable to load Birder model `hieradet_d_small_dino-v2-inat21`. "
-                "Ensure the model can be downloaded or loaded from the configured model cache."
+            raise ModelUnavailableError(
+                public_detail="A required model is unavailable.",
+                debug_detail=(
+                    "Unable to load Birder model "
+                    "`hieradet_d_small_dino-v2-inat21`: model cache/download failed."
+                ),
             ) from exc
 
         model.eval()

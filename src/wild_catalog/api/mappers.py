@@ -1,15 +1,29 @@
 from wild_catalog.api.request_models import IdentifyRequest
+from wild_catalog.core.errors import InvalidGpsOverrideError
 from wild_catalog.core.types import GpsCoordinates
 from wild_catalog.pipeline.models import ExifOverride, IdentifyCommand
 
 
 def parse_gps_coordinates(value: str) -> GpsCoordinates:
-    latitude_text, longitude_text = value.split(",", maxsplit=1)
+    try:
+        latitude_text, longitude_text = value.split(",", maxsplit=1)
+        coordinates = GpsCoordinates(
+            latitude=float(latitude_text.strip()),
+            longitude=float(longitude_text.strip()),
+        )
+    except ValueError as exc:
+        raise InvalidGpsOverrideError(
+            public_detail="Invalid GPS override.",
+            debug_detail=f"Unable to parse GPS override: {value!r}",
+        ) from exc
 
-    return GpsCoordinates(
-        latitude=float(latitude_text.strip()),
-        longitude=float(longitude_text.strip()),
-    )
+    if not -90 <= coordinates.latitude <= 90 or not -180 <= coordinates.longitude <= 180:
+        raise InvalidGpsOverrideError(
+            public_detail="Invalid GPS override.",
+            debug_detail=f"GPS override is outside valid bounds: {value!r}",
+        )
+
+    return coordinates
 
 
 def identify_request_to_command(request: IdentifyRequest) -> IdentifyCommand:
