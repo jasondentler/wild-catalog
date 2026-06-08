@@ -1774,11 +1774,17 @@ The taxonomy service enriches classifier predictions with:
 2. Localized common names.
 3. Taxonomy drift handling.
 4. Fallback common-name behavior.
+5. `is_present` values supplied by the species range prior service.
 
 It uses the iNaturalist Taxonomy DarwinCore Archive, `taxonomy.dwca.zip`, as the
 local source of truth.
 
 Do not call live iNaturalist APIs during `/identify`.
+Do not download or parse `taxonomy.dwca.zip` during `/identify`; request-time
+taxonomy enrichment should use local lookup data prepared before requests.
+`make preop` includes a taxonomy download task that reuses an existing non-empty
+local archive and downloads the configured iNaturalist Taxonomy DarwinCore
+Archive when it is missing.
 
 ### `src/wild_catalog/taxonomy/protocols.py`
 
@@ -1818,7 +1824,15 @@ The taxonomy service is responsible for:
 4. Resolving common names for each lineage rank.
 5. Returning arrays where `taxonomy` and `taxonomy_common_names` have matching
    indexes.
-6. Handling unknown class IDs with controlled errors.
+6. Attaching `is_present` values received from the prior service.
+7. Handling unknown class IDs with controlled errors.
+
+### Pre-operational taxonomy download
+
+The pre-operational task `download-taxonomy-dwca` downloads
+`taxonomy.dwca.zip` to the configured local taxonomy archive path. The real DWCA
+integration test uses the same downloader and downloads the archive under the
+full integration-test gate if it is not already present.
 
 ---
 

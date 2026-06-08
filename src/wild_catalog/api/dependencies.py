@@ -12,6 +12,10 @@ from wild_catalog.deduplication.service import DetectionDeduplicator
 from wild_catalog.detection.registry import build_detector
 from wild_catalog.pipeline.identify import IdentifyPipeline
 from wild_catalog.prior.service import SpeciesRangePriorService
+from wild_catalog.taxonomy.dwca import (
+    load_taxonomy_store_from_dwca,
+    taxonomy_dwca_path_for_settings,
+)
 from wild_catalog.taxonomy.service import TaxonomyService
 
 
@@ -23,6 +27,12 @@ def get_settings() -> Settings:
 @lru_cache(maxsize=1)
 def get_identify_pipeline() -> IdentifyPipeline:
     settings = get_settings()
+    taxonomy_dwca_path = taxonomy_dwca_path_for_settings(settings)
+    taxonomy_store = (
+        load_taxonomy_store_from_dwca(taxonomy_dwca_path)
+        if taxonomy_dwca_path.exists()
+        else None
+    )
 
     return IdentifyPipeline(
         settings=settings,
@@ -37,7 +47,7 @@ def get_identify_pipeline() -> IdentifyPipeline:
             epsilon=settings.prior_epsilon,
             top_k=settings.classifier_top_k,
         ),
-        taxonomy_service=TaxonomyService(settings),
+        taxonomy_service=TaxonomyService(settings, store=taxonomy_store),
     )
 
 

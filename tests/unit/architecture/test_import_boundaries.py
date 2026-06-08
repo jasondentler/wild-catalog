@@ -83,3 +83,22 @@ def test_prior_import_boundaries() -> None:
 
         for forbidden_import in forbidden_imports:
             assert forbidden_import not in text, f"{path} must not import {forbidden_import}"
+
+
+def test_taxonomy_import_boundaries() -> None:
+    forbidden_imports = [
+        "wild_catalog.api",
+        "wild_catalog.detection",
+        "wild_catalog.cropping",
+        "wild_catalog.prior.store",
+        "wild_catalog.conditioning",
+        "wild_catalog.pipeline",
+        "wild_catalog.classifier.birder",
+        "BirderSpeciesClassifier",
+    ]
+
+    for path in read_python_files("taxonomy"):
+        text = path.read_text()
+
+        for forbidden_import in forbidden_imports:
+            assert forbidden_import not in text, f"{path} must not import {forbidden_import}"

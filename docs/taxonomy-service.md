@@ -171,18 +171,37 @@ class ClassIndex:
 @dataclass(frozen=True, slots=True)
 class TaxonRecord:
     taxon_id: int
-    parent_taxon_id: int | None
-    rank: str
     scientific_name: str
+    rank: str
+    parent_taxon_id: int | None
     accepted_taxon_id: int | None = None
+    is_active: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class CommonNameRecord:
+    taxon_id: int
+    locale: str
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class TaxonLineage:
+    taxon_ids: tuple[int, ...]
+    scientific_names: tuple[str, ...]
+    ranks: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class EnrichedPrediction:
+    class_id: int
+    taxon_id: int
+    accepted_taxon_id: int
     confidence: float
     is_present: bool
     taxonomy: tuple[str, ...]
     taxonomy_common_names: tuple[str, ...]
+    taxonomy_rank_names: tuple[str, ...]
 
 
 class TaxonomyService(Protocol):
@@ -237,6 +256,9 @@ Common-name lookup should follow this fallback order:
 
 The service should never fail a prediction only because a localized common name
 is unavailable.
+
+Locale matching is case-insensitive and accepts both hyphen and underscore
+separators, such as `en-US` and `en_US`.
 
 ## Taxonomy Lineage Resolution
 
@@ -326,7 +348,8 @@ cache-building, or startup process.
 
 ### Description
 
-Downloads or verifies `taxonomy.dwca.zip` and compiles it into the local lookup
+Downloads or verifies `taxonomy.dwca.zip` in the configured local taxonomy
+location. Future implementations may also compile it into an optimized lookup
 store used by request-time enrichment.
 
 This operation is not part of the hot `/identify` request path.
@@ -362,8 +385,13 @@ WILD_CATALOG_TAXONOMY_DEFAULT_LANGUAGE=en-US
 WILD_CATALOG_TAXONOMY_ENABLE_DRIFT_MAPPING=true
 ```
 
-The exact archive URL should be verified against the current iNaturalist
-developer documentation before automation is implemented.
+The configured archive URL should be kept aligned with the current iNaturalist
+developer documentation.
+
+`make preop` runs the taxonomy archive download task before request-time
+services need the local data. The download task reuses an existing non-empty
+archive and writes through a temporary file before replacing the final
+`taxonomy.dwca.zip`.
 
 ## Performance Requirements
 

@@ -171,6 +171,10 @@ The root JSON response payload is an array of zero or more detected object struc
   * `taxonomy` (array of strings): Scientific taxonomic lineage ordered from highest rank to lowest rank.
   * `taxonomy_common_names` (array of strings): Localized common names matching the equivalent rank index in `taxonomy`.
 
+The taxonomy values are resolved from local taxonomy data prepared from
+`taxonomy.dwca.zip`. `POST /identify` must not call live iNaturalist APIs or
+download the taxonomy archive.
+
 ### Response Example: `application/json`
 
 ```json

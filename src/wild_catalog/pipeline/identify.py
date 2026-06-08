@@ -9,7 +9,7 @@ from wild_catalog.deduplication.service import DetectionDeduplicator
 from wild_catalog.detection.protocols import ObjectDetector
 from wild_catalog.pipeline.models import IdentifyCommand, IdentifyResult
 from wild_catalog.prior.protocols import SpeciesRangePrior
-from wild_catalog.taxonomy.service import TaxonomyService
+from wild_catalog.taxonomy.protocols import TaxonomyServiceProtocol
 
 
 class IdentifyPipeline:
@@ -23,7 +23,7 @@ class IdentifyPipeline:
         prior_service: SpeciesRangePrior,
         classifier: SpeciesClassifier,
         conditioner: LogitConditioner,
-        taxonomy_service: TaxonomyService,
+        taxonomy_service: TaxonomyServiceProtocol,
     ) -> None:
         self._settings = settings
         self._converter = converter

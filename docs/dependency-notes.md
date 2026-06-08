@@ -33,3 +33,21 @@ The Step 14A build path uses a narrow geospatial dependency set:
 `wild_catalog.prior.build.geopackage`. Keep request-time geometry logic in
 `wild_catalog.prior.point_lookup` so `/identify` reads only the compiled SQLite
 store and never parses raw range-map archives.
+
+## Taxonomy
+
+The taxonomy service maps classifier class IDs to iNaturalist taxon IDs using
+`wild_catalog.classifier.types.ClassIndex`, resolves accepted taxa, walks local
+parent links to build scientific lineage, and resolves common names from local
+taxonomy data. It may depend on `wild_catalog.core.config` for taxonomy
+configuration and default locale.
+
+The service must not depend on API, detection, cropping, conditioning, pipeline,
+range-store internals, or concrete classifier plugin modules. `/identify` must
+not call live iNaturalist APIs or download `taxonomy.dwca.zip`; archive download
+and optimized store preparation belong in pre-operational setup.
+
+`make preop` includes `download-taxonomy-dwca`, which downloads the configured
+iNaturalist Taxonomy DarwinCore Archive when no non-empty local archive exists.
+The real DWCA integration test uses the same downloader under
+`WILD_CATALOG_RUN_INTEGRATION_TESTS=1`.

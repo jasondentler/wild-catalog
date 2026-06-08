@@ -65,7 +65,7 @@ sequenceDiagram
 
     Gateway->>Taxonomy: Enrich class indices
     activate Taxonomy
-    Note over Taxonomy: Uses active classifier class index to resolve taxonomy, common names, and is_present flags.
+    Note over Taxonomy: Uses active classifier class index to resolve taxonomy and common names, then attaches prior-supplied is_present flags.
     Taxonomy-->>Gateway: Return finalized species predictions
     deactivate Taxonomy
 
@@ -85,6 +85,9 @@ sequenceDiagram
 9. Request-time range lookup reads WKB geometries from a local SQLite database
    through an RTree candidate query; downloading, parsing, and compiling raw
    range maps happens outside `/identify`.
+10. Request-time taxonomy enrichment reads local taxonomy lookups only; it must
+    not call live iNaturalist APIs or download `taxonomy.dwca.zip` during
+    `/identify`.
 
 ## Components
 
