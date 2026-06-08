@@ -56,7 +56,7 @@ install-hooks:
 	$(VENV_BIN)/pre-commit install --hook-type commit-msg
 
 license-check:
-	licensecheck --license Apache-2.0 --zero --show-only-failing
+	$(VENV_BIN)/licensecheck --license Apache-2.0 --zero --show-only-failing
 	
 # 6. Lint everything using Ruff
 lint:
