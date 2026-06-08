@@ -1,5 +1,43 @@
 # Wild Catalog Implementation Plan
 
+## Table of Contents
+
+- [Goal](#goal)
+- ✅ [1. Establish the package layout](#1-establish-the-package-layout)
+- ✅ [2. Define dependency direction](#2-define-dependency-direction)
+- ✅ [3. Implement shared domain types](#3-implement-shared-domain-types)
+- ✅ [4. Implement configuration](#4-implement-configuration)
+- ✅ [5. Implement shared device selection](#5-implement-shared-device-selection)
+- ✅ [6. Implement API request and response models](#6-implement-api-request-and-response-models)
+- ✅ [7. Implement the FastAPI app](#7-implement-the-fastapi-app)
+- ✅ [8. Implement dependency wiring](#8-implement-dependency-wiring)
+- ❌ [9. Implement image conversion](#9-implement-image-conversion)
+- ❌ [10. Implement pluggable detection](#10-implement-pluggable-detection)
+- ❌ [11. Implement deduplication](#11-implement-deduplication)
+- ✅ [12. Implement cropping](#12-implement-cropping)
+- ✅ [13. Implement pluggable classification](#13-implement-pluggable-classification)
+- ✅ [14. Implement species range prior service](#14-implement-species-range-prior-service)
+- ✅ [15. Build iNat21 range-map SQLite store](#15-build-inat21-range-map-sqlite-store)
+- ✅ [16. Implement logit conditioning](#16-implement-logit-conditioning)
+- ✅ [17. Implement taxonomy service](#17-implement-taxonomy-service)
+- ✅ [18. Implement the orchestration pipeline](#18-implement-the-orchestration-pipeline)
+- ✅ [19. Implement content negotiation and multipart responses](#19-implement-content-negotiation-and-multipart-responses)
+- ✅ [20. Implement error handling](#20-implement-error-handling)
+- [21. Implement startup pre-warming and status API](#21-implement-startup-pre-warming-and-status-api)
+- ✅ [22. Implement Grounding DINO detection model](#22-implement-grounding-dino-detection-model)
+- ❌ [23. Implement Birder iNat21 classifier model](#23-implement-birder-inat21-classifier-model)
+- [24. Implement taxonomy preop and optimized local taxonomy store](#24-implement-taxonomy-preop-and-optimized-local-taxonomy-store)
+- [25. Implement asset readiness validation and version reporting](#25-implement-asset-readiness-validation-and-version-reporting)
+- [26. Add bounded concurrency](#26-add-bounded-concurrency)
+- ❌ [27. Add timing instrumentation](#27-add-timing-instrumentation)
+- ✅ [28. Implement full real-pipeline integration tests](#28-implement-full-real-pipeline-integration-tests)
+- [29. Implement confidence filtering and result-quality policy](#29-implement-confidence-filtering-and-result-quality-policy)
+- [30. Testing strategy](#30-testing-strategy)
+- [31. Performance and memory rules](#31-performance-and-memory-rules)
+- [32. Milestones](#32-milestones)
+- [33. Final implementation order](#33-final-implementation-order)
+- [34. Summary](#34-summary)
+
 ## Goal
 
 Implement Wild Catalog as a maintainable, readable, low-memory image identification
@@ -1287,6 +1325,8 @@ Example overlapping labels:
 bird + animal
 flower + plant
 mushroom + fungus
+butterfly + insect
+tree + plant
 ```
 
 ### `src/wild_catalog/deduplication/iou.py`
@@ -1324,6 +1364,9 @@ from wild_catalog.detection.types import Detection
 
 class DetectionDeduplicator:
     def __init__(self, iou_threshold: float = 0.45) -> None:
+        if iou_threshold < 0.0 or iou_threshold > 1.0:
+            raise ValueError("iou_threshold must be between 0.0 and 1.0.")
+
         self._iou_threshold = iou_threshold
 
     def filter_overlapping_detections(
@@ -1356,6 +1399,25 @@ class DetectionDeduplicator:
 A later enhancement can prefer more-specific labels when confidence scores are
 close. Start with highest confidence because it is easier to test and reason
 about.
+
+Use strict greater-than comparison:
+
+```python
+iou > self._iou_threshold
+```
+
+IoU exactly equal to the threshold is retained.
+
+Add:
+
+```text
+WILD_CATALOG_DETECTION_IOU_THRESHOLD=0.45
+```
+
+Deduplication runs after detection and before `max_detections` and cropping.
+The service should stay narrowly focused on `list[Detection]` to deduplicated
+`list[Detection]`; it must not import API, concrete detector plugins,
+classifier, taxonomy, prior, cropping, or pipeline code.
 
 ---
 
@@ -1625,7 +1687,7 @@ CREATE TABLE range_store_metadata (
 The metadata table must include `source`, `source_version`, `geometry_format`,
 and `built_at`.
 
-## 14A. Build iNat21 range-map SQLite store
+## 15. Build iNat21 range-map SQLite store
 
 Create an offline or startup-managed process that downloads the iNat21 open
 range maps in parallel, parses them, stores range geometry as WKB rows with an
@@ -1702,7 +1764,7 @@ Avoid test directories named `build`, because pytest ignores those by default.
 
 ---
 
-## 15. Implement logit conditioning
+## 16. Implement logit conditioning
 
 Create:
 
@@ -1795,7 +1857,7 @@ Keep this layer free of image, HTTP, taxonomy, and detector concerns.
 
 ---
 
-## 16. Implement taxonomy service
+## 17. Implement taxonomy service
 
 Create:
 
@@ -1904,7 +1966,7 @@ full integration-test gate if it is not already present.
 
 ---
 
-## 17. Implement the orchestration pipeline
+## 18. Implement the orchestration pipeline
 
 Create:
 
@@ -2047,7 +2109,7 @@ long-term design is to keep them separate.
 
 ---
 
-## 18. Implement content negotiation and multipart responses
+## 19. Implement content negotiation and multipart responses
 
 Create:
 
@@ -2090,7 +2152,7 @@ Part 2+:
 
 ---
 
-## 19. Implement error handling
+## 20. Implement error handling
 
 Create:
 
@@ -2118,7 +2180,7 @@ Do log enough detail for debugging.
 
 ---
 
-## 20. Implement startup pre-warming and status API
+## 21. Implement startup pre-warming and status API
 
 Use FastAPI lifespan support in:
 
@@ -2629,7 +2691,7 @@ Acceptance criteria:
 
 ---
 
-## 21. Implement Grounding DINO detection model
+## 22. Implement Grounding DINO detection model
 
 Create or complete the concrete Grounding DINO detector plugin:
 
@@ -2719,7 +2781,7 @@ Integration tests under `tests/integration/detection/` should build the `groundi
 
 Do not add a new testing Makefile command. The real integration tests run through the existing `make test` behavior.
 
-## 22. Implement Birder iNat21 classifier model
+## 23. Implement Birder iNat21 classifier model
 
 Complete the concrete Birder/iNaturalist 2021 classifier adapter behind the `SpeciesClassifier` protocol.
 
@@ -2761,7 +2823,7 @@ conditioner accepts the classifier output and prior mask
 
 Keep the curated cormorant regression test under `tests/integration/pipeline/`. It should use `sample-images/20260402-IMG_7906.jpg` and assert that the classifier/prior/conditioning/taxonomy chain identifies Neotropic Cormorant / `Nannopterum brasilianum`.
 
-## 23. Implement taxonomy preop and optimized local taxonomy store
+## 24. Implement taxonomy preop and optimized local taxonomy store
 
 Add a durable request-time taxonomy store derived from `taxonomy.dwca.zip`.
 
@@ -2795,7 +2857,7 @@ taxonomy_metadata
 
 Startup should load or open the prepared taxonomy store. If the required taxonomy store is missing or invalid, startup status should fail the taxonomy task with `local_data_unavailable`.
 
-## 24. Implement asset readiness validation and version reporting
+## 25. Implement asset readiness validation and version reporting
 
 Define a consistent model/data asset lifecycle.
 
@@ -2815,7 +2877,7 @@ startup synthetic inference setting
 
 Extend `GET /status` so it can expose loaded asset metadata once available. Do not include local filesystem paths in public responses.
 
-## 25. Add bounded concurrency
+## 26. Add bounded concurrency
 
 Real model inference can consume significant memory.
 
@@ -2843,7 +2905,7 @@ Start conservative. Increase only after measuring memory and latency.
 
 ---
 
-## 26. Add timing instrumentation
+## 27. Add timing instrumentation
 
 Create:
 
@@ -2878,7 +2940,7 @@ X-Wild-Catalog-Total-Time-Ms
 
 ---
 
-## 27. Implement full real-pipeline integration tests
+## 28. Implement full real-pipeline integration tests
 
 Add end-to-end integration tests for the full internal pipeline after the real detector and classifier are implemented.
 
@@ -2900,7 +2962,39 @@ Use `sample-images/` fixtures. Avoid live iNaturalist API calls. Avoid adding a 
 
 The full pipeline test does not need to assert exact species identity for every fixture. It should prove that the real pipeline returns bounded boxes, crops, predictions, taxonomy arrays, and presence values without violating memory or import-boundary rules.
 
-## 28. Implement confidence filtering and result-quality policy
+Include an integration test for each of the sample images. Here are the expected results:
+1. [20260402-IMG_7906.jpg](../sample-images/20260402-IMG_7906.jpg)
+    * Neotropic Cormorant
+2. [20260419-DA8A0090.jpg](../sample-images/20260419-DA8A0090.jpg)
+    * No animal detections
+    * Lanceleaf Coreopsis
+3. [20260419-DA8A5083.jpg](../sample-images/20260419-DA8A5083.jpg)
+    * American Alligator
+4. [20260419-DA8A5151.jpg](../sample-images/20260419-DA8A5151.jpg)
+    * Snowy Egret
+    * Cormorant
+5. [20260419-DA8A5506.jpg](../sample-images/20260419-DA8A5506.jpg)
+    * 2x Purple Gallinule
+6. [20260419-DA8A7718.jpg](../sample-images/20260419-DA8A7718.jpg)
+    * 6x Ruddy Turnstones
+7. [20260525-IMG_7906.CR3](../sample-images/20260525-IMG_7906.CR3)
+    * Red-winged Blackbird
+8. [20260525-IMG_7906.heic](../sample-images/20260525-IMG_7906.heic)
+    * Red-winged Blackbird
+
+Recommended integration test coverage:
+
+1. One test per fixture in `tests/integration/pipeline/`.
+2. Each test should build the real pipeline from settings and run the full request path.
+3. Each test should assert the returned objects have bounded boxes inside the image.
+4. Each test should assert crop counts match the expected detections.
+5. Each test should assert taxonomy arrays and common-name arrays stay aligned.
+6. Each test should assert `is_present` values are populated from the prior layer.
+7. Each test should assert the expected top-level identification result for the fixture.
+8. The `DA8A0090` fixture should explicitly cover the zero-animal-detections path while still returning the plant identification.
+9. The CR3 and HEIC fixtures should exercise image conversion before detection and classification.
+
+## 29. Implement confidence filtering and result-quality policy
 
 Define how final predictions are filtered before API serialization.
 
@@ -2922,7 +3016,7 @@ Policy should answer:
 
 The logit conditioning layer should remain focused on logits and probabilities. Result-quality filtering should live in a small pipeline/result policy layer rather than inside model plugins.
 
-## 29. Testing strategy
+## 30. Testing strategy
 
 Use default tests with stubs.
 
@@ -3020,7 +3114,7 @@ Use small fixture data for default CI.
 
 ---
 
-## 30. Performance and memory rules
+## 31. Performance and memory rules
 
 ### Hot path rules
 
@@ -3050,7 +3144,7 @@ Use small fixture data for default CI.
 
 ---
 
-## 31. Milestones
+## 32. Milestones
 
 ### Milestone 1: API shell with stubs
 
@@ -3237,7 +3331,7 @@ Acceptance criteria:
 
 ---
 
-## 32. Final implementation order
+## 33. Final implementation order
 
 Build in this order:
 
@@ -3264,7 +3358,7 @@ Build in this order:
 
 ---
 
-## 33. Summary
+## 34. Summary
 
 Wild Catalog should be implemented as a clear, modular pipeline:
 

@@ -79,7 +79,7 @@ class FakeDetectorWithManyDetections:
 
 
 class FakeDeduplicator:
-    def deduplicate(self, detections: list[Detection]) -> list[Detection]:
+    def filter_overlapping_detections(self, detections: list[Detection]) -> list[Detection]:
         return detections
 
 

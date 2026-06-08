@@ -21,9 +21,14 @@ def test_get_settings_returns_cached_settings(monkeypatch) -> None:
     assert first is second
 
 
-def test_get_identify_pipeline_returns_cached_pipeline(monkeypatch) -> None:
+def test_get_identify_pipeline_returns_cached_pipeline(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("WILD_CATALOG_DETECTOR_BACKEND", "stub")
     monkeypatch.setenv("WILD_CATALOG_CLASSIFIER_BACKEND", "stub")
+    monkeypatch.setenv(
+        "WILD_CATALOG_TAXONOMY_DWCA_PATH",
+        str(tmp_path / "missing-taxonomy.dwca.zip"),
+    )
+    monkeypatch.setenv("WILD_CATALOG_RANGE_MAP_STORE_PATH", "")
 
     first = get_identify_pipeline()
     second = get_identify_pipeline()

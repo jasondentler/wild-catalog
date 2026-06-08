@@ -17,6 +17,7 @@ class Settings:
     max_image_pixels: int = 24_000_000
     max_detections: int = 8
     crop_margin_ratio: float = 0.12
+    detection_iou_threshold: float = 0.45
     detector_backend: str = "stub"
     classifier_backend: str = "stub"
     preload_models: bool = False
@@ -55,10 +56,13 @@ class Settings:
     def from_env(cls) -> "Settings":
         return cls(
             env=os.getenv("WILD_CATALOG_ENV", "development"),
-            max_upload_bytes=int(os.getenv("WILD_CATALOG_MAX_UPLOAD_BYTES", "26214400")),
+            max_upload_bytes=int(os.getenv("WILD_CATALOG_MAX_UPLOAD_BYTES", "50000000")),
             max_image_pixels=int(os.getenv("WILD_CATALOG_MAX_IMAGE_PIXELS", "24000000")),
             max_detections=int(os.getenv("WILD_CATALOG_MAX_DETECTIONS", "8")),
             crop_margin_ratio=float(os.getenv("WILD_CATALOG_CROP_MARGIN_RATIO", "0.12")),
+            detection_iou_threshold=float(
+                os.getenv("WILD_CATALOG_DETECTION_IOU_THRESHOLD", "0.45")
+            ),
             detector_backend=os.getenv("WILD_CATALOG_DETECTOR_BACKEND", "stub"),
             classifier_backend=os.getenv("WILD_CATALOG_CLASSIFIER_BACKEND", "stub"),
             preload_models=_read_bool("WILD_CATALOG_PRELOAD_MODELS", False),
@@ -142,6 +146,10 @@ class Settings:
                 "en-US",
             ),
         )
+
+    def __post_init__(self) -> None:
+        if self.detection_iou_threshold < 0.0 or self.detection_iou_threshold > 1.0:
+            raise ValueError("detection_iou_threshold must be between 0.0 and 1.0.")
 
 
 def _read_bool(name: str, default: bool) -> bool:

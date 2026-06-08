@@ -38,7 +38,9 @@ def get_identify_pipeline() -> IdentifyPipeline:
         settings=settings,
         converter=ImageConversionService(settings),
         detector=build_detector(settings),
-        deduplicator=DetectionDeduplicator(),
+        deduplicator=DetectionDeduplicator(
+            iou_threshold=settings.detection_iou_threshold,
+        ),
         cropper=ImageCropper(margin_ratio=settings.crop_margin_ratio),
         prior_service=SpeciesRangePriorService(settings),
         classifier=build_classifier(settings),

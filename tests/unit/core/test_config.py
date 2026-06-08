@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from wild_catalog.core.config import Settings
 
 
@@ -17,6 +19,7 @@ def test_settings_from_env_uses_defaults(monkeypatch) -> None:
     assert settings.classifier_backend == "stub"
     assert settings.max_detections == 8
     assert settings.crop_margin_ratio == 0.12
+    assert settings.detection_iou_threshold == 0.45
 
 
 def test_settings_from_env_reads_model_backends(monkeypatch) -> None:
@@ -27,6 +30,19 @@ def test_settings_from_env_reads_model_backends(monkeypatch) -> None:
 
     assert settings.detector_backend == "grounding-dino"
     assert settings.classifier_backend == "birder-inat21"
+
+
+def test_settings_from_env_reads_detection_iou_threshold(monkeypatch) -> None:
+    monkeypatch.setenv("WILD_CATALOG_DETECTION_IOU_THRESHOLD", "0.5")
+
+    settings = Settings.from_env()
+
+    assert settings.detection_iou_threshold == 0.5
+
+
+def test_settings_rejects_invalid_detection_iou_threshold() -> None:
+    with pytest.raises(ValueError, match="detection_iou_threshold"):
+        Settings(detection_iou_threshold=1.1)
 
 
 def test_settings_from_env_reads_optional_path(monkeypatch) -> None:

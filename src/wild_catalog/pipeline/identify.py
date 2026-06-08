@@ -56,7 +56,9 @@ class IdentifyPipeline:
         )
 
         detections = self._detector.locate_objects(converted.image)
-        deduplicated_detections = self._deduplicator.deduplicate(detections)
+        deduplicated_detections = self._deduplicator.filter_overlapping_detections(
+            detections
+        )
         limited_detections = deduplicated_detections[: self._settings.max_detections]
 
         crop_results = self._cropper.extract_target_regions(
