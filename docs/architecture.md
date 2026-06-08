@@ -11,6 +11,7 @@ sequenceDiagram
     autonumber
     actor User
     participant Gateway as API Gateway
+    participant Status as Startup Status Tracker
     participant Converter as Image Conversion Service
     participant Detector as Detector Plugin
     participant DeDup as Duplicate Detection Service
@@ -21,6 +22,10 @@ sequenceDiagram
     participant Taxonomy as Taxonomy Service
 
     User->>Gateway: Upload photo byte stream + JSON payload
+    Gateway->>Status: Check readiness
+    alt backend is still warming or failed
+        Gateway-->>User: 503 Service Unavailable; call GET /status
+    else backend is ready
 
     Gateway->>Converter: Pass raw photo stream and original filename
     activate Converter
@@ -70,6 +75,7 @@ sequenceDiagram
     deactivate Taxonomy
 
     Gateway-->>User: Return JSON or multipart/mixed response
+    end
 ```
 
 ## Key architectural rules
@@ -91,6 +97,32 @@ sequenceDiagram
 11. The API gateway owns content negotiation and multipart response formatting.
     Pipeline and service layers return domain models and must not import
     FastAPI response classes or multipart helpers.
+12. Startup uses FastAPI lifespan support to build one identify pipeline, warm required models and local stores, and store readiness state in `app.state`.
+13. `GET /health` remains lightweight; `GET /status` reports startup readiness and pre-warming progress.
+14. `POST /identify` must check readiness before expensive work and return `503 Service Unavailable` with a message that points clients to `GET /status` when the backend is not ready.
+
+
+## Startup and readiness architecture
+
+Wild Catalog uses FastAPI lifespan support to start the HTTP server quickly while a background startup warmup task prepares required dependencies. The default is eager preloading:
+
+```text
+WILD_CATALOG_PRELOAD_MODELS=true
+```
+
+During startup, the app should:
+
+1. Build settings.
+2. Build exactly one identify pipeline.
+3. Store the pipeline in `app.state`.
+4. Start warmup tasks for detector model, classifier model, taxonomy store, range prior store, and optional synthetic inference.
+5. Track readiness in a thread-safe startup status tracker.
+
+`GET /status` reads the startup status tracker and reports task states, progress, elapsed time, estimated time remaining, and failure details. `POST /identify` reads the same status tracker and refuses requests with `503 Service Unavailable` until the backend is ready. The 503 message must tell clients to call `GET /status`.
+
+The warmed pipeline is the same pipeline used by `/identify`. Do not warm one pipeline and serve requests with another.
+
+The startup package may depend on the pipeline because it is an application orchestration layer. The pipeline must not import startup or API modules.
 
 ## Components
 
@@ -103,3 +135,4 @@ sequenceDiagram
 7. [Species Range Prior Service](./species-range-prior-service.md)
 8. [Logit Conditioning Layer](./logit-conditioning-layer.md)
 9. [Taxonomy Service](./taxonomy-service.md)
+10. [Deployment Guide](./deployments.md)

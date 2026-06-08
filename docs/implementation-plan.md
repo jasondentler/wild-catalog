@@ -44,14 +44,21 @@ src/
       errors.py
       request_models.py
       response_models.py
+      status_models.py
+      status_serializers.py
+      readiness.py
       multipart.py
       content_negotiation.py
+      status_models.py
+      status_serializers.py
+      readiness.py
 
     core/
       __init__.py
       config.py
       device.py
       timing.py
+      errors.py
       types.py
 
     conversion/
@@ -127,6 +134,18 @@ src/
       __init__.py
       identify.py
       models.py
+
+    startup/
+      __init__.py
+      status.py
+      tasks.py
+      warmup.py
+
+    startup/
+      __init__.py
+      status.py
+      tasks.py
+      warmup.py
 
     data/
       __init__.py
@@ -552,6 +571,7 @@ class Settings:
     classifier_backend: str
 
     preload_models: bool
+    startup_synthetic_inference_enabled: bool
     max_concurrent_identify_requests: int
 
     enable_platform_image_conversion: bool
@@ -590,7 +610,8 @@ WILD_CATALOG_CROP_MARGIN_RATIO=0.12
 WILD_CATALOG_DETECTOR_BACKEND=grounding-dino
 WILD_CATALOG_CLASSIFIER_BACKEND=birder-inat21
 
-WILD_CATALOG_PRELOAD_MODELS=false
+WILD_CATALOG_PRELOAD_MODELS=true
+WILD_CATALOG_STARTUP_SYNTHETIC_INFERENCE_ENABLED=true
 WILD_CATALOG_MAX_CONCURRENT_IDENTIFY_REQUESTS=1
 
 WILD_CATALOG_ENABLE_PLATFORM_IMAGE_CONVERSION=true
@@ -738,6 +759,7 @@ Implement:
 
 ```text
 GET /health
+GET /status
 GET /openapi.json
 POST /identify
 ```
@@ -756,6 +778,23 @@ Response:
   "status": "ok"
 }
 ```
+
+### `GET /status`
+
+`GET /status` reports startup readiness and warmup progress. Clients can poll it
+to determine whether `POST /identify` is available.
+
+`GET /status` should report:
+
+1. Overall readiness.
+2. Whether model preloading is enabled.
+3. Per-task state.
+4. Per-task progress where available.
+5. Elapsed startup time.
+6. Estimated time remaining where available.
+7. Failure details for failed startup tasks.
+
+`GET /status` must remain available while startup warming is running.
 
 ### `POST /identify`
 
@@ -828,8 +867,7 @@ src/wild_catalog/api/dependencies.py
 The API should build services through dependency providers and registries.
 This module is the application composition root: it builds settings, detector
 plugins, classifier plugins, shared services, and the `IdentifyPipeline`.
-Use `@lru_cache(maxsize=1)` so settings and the pipeline are constructed once
-per process.
+Use `@lru_cache(maxsize=1)` for settings. The FastAPI lifespan builds one identify pipeline, stores it in `app.state`, and `/identify` uses that same warmed pipeline. Do not warm one pipeline and serve requests with another.
 
 The pipeline must receive dependencies through its constructor and must not
 construct concrete detector or classifier plugins internally.
@@ -854,10 +892,7 @@ def get_settings() -> Settings:
     return Settings.from_env()
 
 
-@lru_cache(maxsize=1)
-def get_identify_pipeline() -> IdentifyPipeline:
-    settings = get_settings()
-
+def build_identify_pipeline(settings: Settings) -> IdentifyPipeline:
     return IdentifyPipeline(
         settings=settings,
         converter=ImageConversionService(settings),
@@ -875,14 +910,19 @@ def get_identify_pipeline() -> IdentifyPipeline:
     )
 
 
+def get_identify_pipeline(request: Request) -> IdentifyPipeline:
+    return request.app.state.identify_pipeline
+
+
+def get_startup_status(request: Request) -> StartupStatusTracker:
+    return request.app.state.startup_status
+
+
 def clear_dependency_caches() -> None:
     get_settings.cache_clear()
-    get_identify_pipeline.cache_clear()
 ```
 
-Use FastAPI dependency overrides in tests to inject stub services.
-`get_identify_pipeline()` is fully implemented in Step 8. Multipart response
-building remains a placeholder until Step 18.
+Use FastAPI dependency overrides in tests to inject stub services. The lifespan stores the warmed pipeline and startup status in `app.state`; dependencies retrieve those application-scoped objects.
 
 ---
 
@@ -2065,10 +2105,11 @@ Recommended HTTP statuses:
 | Status | Use case |
 |---|---|
 | `400 Bad Request` | Malformed JSON payload, invalid GPS override |
+| `406 Not Acceptable` | `return_detected_images=true` but `Accept` does not allow `multipart/mixed` |
 | `413 Payload Too Large` | Upload exceeds configured size |
 | `415 Unsupported Media Type` | Unsupported image format |
 | `422 Unprocessable Entity` | Corrupt image, failed platform conversion |
-| `503 Service Unavailable` | Required model or local data unavailable |
+| `503 Service Unavailable` | Required model or local data unavailable, startup still warming, or startup failed |
 | `500 Internal Server Error` | Unexpected failure |
 
 Do not expose stack traces or raw command stderr in API responses.
@@ -2077,7 +2118,7 @@ Do log enough detail for debugging.
 
 ---
 
-## 20. Implement startup pre-warming
+## 20. Implement startup pre-warming and status API
 
 Use FastAPI lifespan support in:
 
@@ -2085,26 +2126,506 @@ Use FastAPI lifespan support in:
 src/wild_catalog/api/app.py
 ```
 
-Production pre-warm behavior:
+Create startup/status support files:
+
+```text
+src/wild_catalog/startup/__init__.py
+src/wild_catalog/startup/status.py
+src/wild_catalog/startup/tasks.py
+src/wild_catalog/startup/warmup.py
+
+src/wild_catalog/api/status_models.py
+src/wild_catalog/api/status_serializers.py
+src/wild_catalog/api/readiness.py
+```
+
+### Startup behavior
+
+Default behavior is eager preloading:
+
+```text
+WILD_CATALOG_PRELOAD_MODELS=true
+```
+
+Startup should:
+
+1. Build settings.
+2. Build one identify pipeline.
+3. Store the pipeline in `app.state`.
+4. Start warmup tasks.
+5. Track per-task status and progress.
+6. Mark the backend ready only after required warmup tasks complete.
+7. Log startup timing.
+
+When `WILD_CATALOG_PRELOAD_MODELS=true`, startup should warm:
+
+1. Detector model.
+2. Classifier model.
+3. Taxonomy store.
+4. Range prior store.
+5. Optional tiny synthetic inference.
+
+Recommended setting:
+
+```text
+WILD_CATALOG_STARTUP_SYNTHETIC_INFERENCE_ENABLED=true
+```
+
+`WILD_CATALOG_PRELOAD_MODELS=false` is a development opt-out. It should allow
+the backend to become ready without eagerly loading heavy models. Do not make
+lazy loading the default.
+
+### Background warmup requirement
+
+Startup warmup should run in the background rather than blocking the FastAPI app
+from serving all requests.
+
+This allows:
+
+```text
+GET /status
+```
+
+to be available immediately while startup warming is still running.
+
+During this period:
+
+```text
+POST /identify
+```
+
+must not run the expensive identification pipeline.
+
+Instead, it should return:
+
+```text
+503 Service Unavailable
+```
+
+### `POST /identify` not-ready behavior
+
+If `/identify` is called before warmup completes, return:
+
+```text
+503 Service Unavailable
+```
+
+with an error body like:
+
+```json
+{
+  "error": {
+    "code": "service_not_ready",
+    "message": "Wild Catalog is still warming required models and local data. Call GET /status for startup progress and estimated readiness.",
+    "request_id": "..."
+  }
+}
+```
+
+If startup failed, return:
+
+```json
+{
+  "error": {
+    "code": "startup_failed",
+    "message": "Wild Catalog startup failed while preparing required models or local data. Call GET /status for failure details.",
+    "request_id": "..."
+  }
+}
+```
+
+When a reasonable estimate is available, include:
+
+```http
+Retry-After: 10
+```
+
+The `503` message must explicitly tell clients that `GET /status` provides more
+information.
+
+### `GET /status`
+
+Add:
+
+```text
+GET /status
+```
+
+`GET /status` should be available while startup warming is still running.
+
+It should return:
+
+1. Overall startup state.
+2. `ready`.
+3. `preload_models`.
+4. Startup `started_at`.
+5. Startup `finished_at`.
+6. Startup `elapsed_seconds`.
+7. Overall `estimated_seconds_remaining`.
+8. Per-task progress.
+
+Recommended response shape:
+
+```json
+{
+  "state": "starting",
+  "ready": false,
+  "preload_models": true,
+  "started_at": "2026-06-07T21:42:35.729Z",
+  "finished_at": null,
+  "elapsed_seconds": 18.2,
+  "estimated_seconds_remaining": 42.0,
+  "tasks": [
+    {
+      "name": "detector-model",
+      "state": "succeeded",
+      "progress_current": null,
+      "progress_total": null,
+      "progress_percent": null,
+      "message": "Detector model is ready.",
+      "started_at": "2026-06-07T21:42:35.729Z",
+      "finished_at": "2026-06-07T21:42:41.100Z",
+      "elapsed_seconds": 5.37,
+      "estimated_seconds_remaining": null,
+      "error_code": null,
+      "error_message": null
+    },
+    {
+      "name": "classifier-model",
+      "state": "running",
+      "progress_current": null,
+      "progress_total": null,
+      "progress_percent": null,
+      "message": "Loading classifier model.",
+      "started_at": "2026-06-07T21:42:41.101Z",
+      "finished_at": null,
+      "elapsed_seconds": 12.8,
+      "estimated_seconds_remaining": 42.0,
+      "error_code": null,
+      "error_message": null
+    }
+  ]
+}
+```
+
+Task states:
+
+```text
+pending
+running
+succeeded
+failed
+skipped
+```
+
+Overall states:
+
+```text
+starting
+ready
+failed
+```
+
+### Startup status tracker
+
+Implement a thread-safe startup status tracker in:
+
+```text
+src/wild_catalog/startup/status.py
+```
+
+It should support:
+
+1. Registering tasks.
+2. Marking tasks pending, running, succeeded, failed, or skipped.
+3. Updating progress.
+4. Capturing task messages.
+5. Capturing task errors.
+6. Capturing elapsed time.
+7. Capturing estimated time remaining.
+8. Creating immutable snapshots for API serialization.
+
+Use a lock because `/status` may be read while warmup tasks are updating state.
+
+### Startup warmup tasks
+
+Implement startup warmup orchestration in:
+
+```text
+src/wild_catalog/startup/tasks.py
+src/wild_catalog/startup/warmup.py
+```
+
+Recommended startup tasks:
+
+```text
+detector-model
+classifier-model
+taxonomy-store
+range-prior-store
+synthetic-inference
+```
+
+Run tasks sequentially first for simpler debugging and lower peak memory usage.
+
+A later optimization can run independent tasks in parallel after measuring memory
+and GPU contention.
+
+### Pipeline warmup hooks
+
+Add explicit warmup hooks to:
+
+```text
+src/wild_catalog/pipeline/identify.py
+```
+
+Recommended methods:
+
+```python
+def detector_warmup(self) -> None:
+    ...
+
+def classifier_warmup(self) -> None:
+    ...
+
+def taxonomy_warmup(self) -> None:
+    ...
+
+def prior_warmup(self) -> None:
+    ...
+
+def synthetic_warmup(self, image: Image.Image) -> None:
+    ...
+```
+
+Model and store services may expose their own `warmup()` methods. The pipeline
+warmup hooks should call those where available.
+
+### Store/model warmup expectations
+
+Detector warmup should load the detector model.
+
+Classifier warmup should load the classifier model.
+
+Taxonomy warmup should load or validate the taxonomy lookup store.
+
+Range prior warmup should open and lightly validate the SQLite range prior store.
+
+Synthetic inference should run a tiny image through detector/classifier warmup
+paths to force lazy tensor/model initialization.
+
+### Do not rebuild durable data on every startup
+
+Startup should not automatically rebuild large durable pre-operational data
+assets every time the app starts.
+
+Startup should warm and validate existing assets:
+
+```text
+detector model cache
+classifier model cache
+taxonomy archive or compiled taxonomy store
+range-map SQLite store
+```
+
+If required local data is missing, startup should mark the relevant task failed
+and `/identify` should return `503`.
+
+Use `make preop` and specific preop commands to prepare durable assets.
+
+Do not call `make` from FastAPI startup.
+
+Do not run shell commands from startup to rebuild all range maps.
+
+### Readiness guard
+
+Create:
+
+```text
+src/wild_catalog/api/readiness.py
+```
+
+The `/identify` endpoint should check readiness before running expensive work.
+
+Recommended behavior:
+
+1. If startup status is ready, continue.
+2. If startup status is still starting, raise `ServiceNotReadyError`.
+3. If startup status failed, raise `StartupFailedError`.
+
+The readiness guard should include `Retry-After` when an estimated time remaining
+exists.
+
+Recommended order inside `/identify`:
+
+1. Check readiness.
+2. Parse request payload.
+3. Run content negotiation.
+4. Run pipeline.
+5. Build response.
+
+This means malformed requests may receive `503` during startup warming because
+`/identify` is temporarily unavailable. This is acceptable and protects the
+warming server from unnecessary request work.
+
+### Dependency wiring
+
+`src/wild_catalog/api/dependencies.py` should expose:
+
+```python
+def build_identify_pipeline(settings: Settings) -> IdentifyPipeline:
+    ...
+
+def get_identify_pipeline(request: Request) -> IdentifyPipeline:
+    return request.app.state.identify_pipeline
+
+def get_startup_status(request: Request) -> StartupStatusTracker:
+    return request.app.state.startup_status
+```
+
+The warmed pipeline stored in `app.state` must be the same pipeline used by
+`POST /identify`.
+
+Avoid warming one pipeline and serving requests through a different pipeline.
+
+### Lifespan implementation
+
+Use FastAPI lifespan in:
+
+```text
+src/wild_catalog/api/app.py
+```
+
+The app should:
 
 1. Build settings.
 2. Build the identify pipeline.
-3. If `WILD_CATALOG_PRELOAD_MODELS=true`:
-   - load detector model;
-   - load classifier model;
-   - load taxonomy store;
-   - open range prior store;
-   - optionally run a tiny synthetic inference.
-4. Log startup timing.
+3. Create startup status tracker.
+4. Store settings, pipeline, and status tracker in `app.state`.
+5. If preloading is enabled, submit warmup to a background executor.
+6. If preloading is disabled, mark preload as skipped and mark the service ready.
+7. Shut down the warmup executor on application shutdown.
 
-Development behavior:
+### `GET /health`
 
-1. Keep model loading lazy by default.
-2. Allow `make serve` to start quickly.
-3. Avoid model downloads unless explicitly requested.
+`GET /health` remains lightweight.
 
-This keeps local development fast while supporting low-latency warm production
-requests.
+It should not:
+
+```text
+load models
+check range-map data
+parse taxonomy data
+run synthetic inference
+report readiness
+```
+
+It should continue to return:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+Use `GET /status` for readiness.
+
+### Client behavior
+
+Clients should use this flow:
+
+1. Start backend.
+2. Poll `GET /status`.
+3. Wait for `ready=true`.
+4. Call `POST /identify`.
+5. If `POST /identify` returns `503`, call `GET /status` and retry later.
+
+### Tests
+
+Add unit tests for:
+
+```text
+tests/unit/startup/test_status.py
+tests/unit/api/test_readiness.py
+tests/unit/api/test_status_serializers.py
+tests/unit/api/test_status_endpoint.py
+tests/unit/api/test_identify_readiness.py
+```
+
+Update existing API tests that exercise `/identify` to override startup status as
+ready. Otherwise, those tests may now receive `503` before testing their intended
+behavior.
+
+Test cases should include:
+
+1. Status tracker reports running task progress.
+2. Status tracker reports ready state.
+3. Status tracker reports failed state.
+4. `/status` returns startup state.
+5. `/identify` returns `503 service_not_ready` when warmup is running.
+6. `/identify` returns `503 startup_failed` when warmup failed.
+7. `/identify` not-ready response mentions `GET /status`.
+8. `Retry-After` is set when an estimate is available.
+9. Existing `/identify` response behavior tests set startup status to ready.
+
+### Documentation
+
+Document:
+
+```text
+WILD_CATALOG_PRELOAD_MODELS defaults to true.
+WILD_CATALOG_PRELOAD_MODELS=false is development opt-out behavior.
+GET /health is lightweight.
+GET /status reports readiness and warmup progress.
+POST /identify returns 503 until startup warming completes.
+POST /identify 503 responses tell clients to call GET /status.
+Retry-After may be included when an estimate is available.
+make serve may start the HTTP server quickly, but /identify is unavailable until ready.
+```
+
+Acceptance criteria:
+
+1. FastAPI lifespan support is used.
+2. `WILD_CATALOG_PRELOAD_MODELS` defaults to `true`.
+3. `WILD_CATALOG_PRELOAD_MODELS=false` is supported for development opt-out.
+4. Startup builds settings.
+5. Startup builds one identify pipeline.
+6. Startup stores the warmed pipeline in `app.state`.
+7. `/identify` uses the same pipeline that startup warmed.
+8. Startup warms detector model by default.
+9. Startup warms classifier model by default.
+10. Startup warms taxonomy store by default.
+11. Startup opens or validates range prior store by default.
+12. Startup optionally runs tiny synthetic inference.
+13. Startup logs timing.
+14. Startup status tracker exists and is thread-safe.
+15. `GET /status` exists.
+16. `GET /status` is available while startup warmup is running.
+17. `GET /status` returns `ready=false` while warming.
+18. `GET /status` returns `ready=true` when warmup completes.
+19. `GET /status` returns per-task state.
+20. `GET /status` returns per-task progress when available.
+21. `GET /status` returns elapsed time.
+22. `GET /status` returns estimated time remaining when available.
+23. `GET /status` returns task failure details when startup fails.
+24. `POST /identify` returns `503` while startup is still warming.
+25. `POST /identify` 503 response uses error code `service_not_ready`.
+26. `POST /identify` 503 response tells clients to call `GET /status`.
+27. `POST /identify` includes `Retry-After` when a reasonable estimate exists.
+28. `POST /identify` returns `503` with error code `startup_failed` if warmup failed.
+29. `POST /identify` does not run expensive pipeline work before readiness check.
+30. `GET /health` remains lightweight.
+31. `GET /health` does not load models.
+32. `GET /health` does not check local data.
+33. Existing API tests override startup status to ready where needed.
+34. Unit tests live under `tests/unit/`.
+35. No tests are created directly under `tests/`.
+36. No Makefile changes are made.
+37. `make test-fast` passes.
+38. `make lint` passes.
+39. `make test` passes.
+40. `make pr` passes.
+
 
 ---
 
@@ -2468,7 +2989,7 @@ Acceptance criteria:
 
 Deliverables:
 
-1. Startup pre-warming.
+1. Startup pre-warming and `GET /status` readiness reporting.
 2. Bounded concurrency.
 3. Timing logs.
 4. Request IDs.

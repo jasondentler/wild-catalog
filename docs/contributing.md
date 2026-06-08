@@ -125,12 +125,67 @@ make
 
 Once your environment is built via the initial [`make`](https://www.gnu.org/software/make/) invocation, use these shortcuts for quick local development loops:
 
-*   **`make serve`** — Starts the local [Uvicorn](https://www.uvicorn.org/) API server with live code auto-reload enabled.
+*   **`make serve`** — Starts the local [Uvicorn](https://www.uvicorn.org/) API server with live code auto-reload enabled. By default, the backend warms required models and local stores before `/identify` becomes ready; poll `GET /status` to watch progress. For fast local server startup, run with `WILD_CATALOG_PRELOAD_MODELS=false`.
 *   **`make test-fast`** — Runs lightweight unit tests immediately while skipping heavyweight integration checks.
 *   **`make test`** — Runs the full test suite, including end-to-end integration checks.
 *   **`make lint`** — Runs code linting checks using [Ruff](https://ruff.rs/).
 *   **`make lint-fix`** — Automatically fixes safe code style errors and organizes imports.
-*   **`make clean`** — Wipes the `.venv` directory clean if you need to perform a fresh reinstall.
+*   **`make clean`** — Wipes generated local state, including `.venv` and the generated `data/` folder, if you need to perform a fresh reinstall.
+
+
+## Pre-operational data and model setup
+
+Wild Catalog separates durable setup work from request-time `/identify` behavior. `POST /identify` must not download models, download taxonomy archives, compile range maps, or parse large raw data archives.
+
+Use the pre-operational commands before running real-model workflows:
+
+```bash
+make preop
+```
+
+This runs the configured pre-operational tasks as a group. Individual tasks may include:
+
+```bash
+make preop-range-maps
+make preop-classifier-model
+make preop-detector-model
+```
+
+Do not add new make commands for testing. Use the existing test commands:
+
+```bash
+make test-fast
+make test
+make pr
+```
+
+## Running the API locally
+
+The default startup behavior is eager warmup:
+
+```text
+WILD_CATALOG_PRELOAD_MODELS=true
+```
+
+When you run:
+
+```bash
+make serve
+```
+
+the HTTP server can start while warmup continues in the background. During that time:
+
+* `GET /health` returns a lightweight service heartbeat.
+* `GET /status` reports startup progress and readiness.
+* `POST /identify` returns `503 Service Unavailable` until the backend is ready.
+
+For faster development startup without eager model loading:
+
+```bash
+WILD_CATALOG_PRELOAD_MODELS=false make serve
+```
+
+Use this opt-out only for local development. Production and realistic integration testing should use the default eager warmup.
 
 ## 🛠️ Development Workflow
 
@@ -154,7 +209,7 @@ All contributions require tests to ensure stability and prevent regressions. I u
    ```bash
    make test
    ```
-   Real Birder classifier integration tests live under `tests/integration/classifier/` and use the project fixtures in `sample-images/`.
+   Real Birder classifier integration tests live under `tests/integration/classifier/` and use the project fixtures in `sample-images/`. The cormorant regression fixture uses `sample-images/20260402-IMG_7906.jpg` and runs through the existing `make test` command.
 4. **Test Coverage**: I require a minimum of $\ge 80\%$ code coverage. The default test commands enforce this through the repository configuration automatically.
 
 ---

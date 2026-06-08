@@ -9,6 +9,7 @@ The API gateway exposes the public HTTP contract for Wild Catalog. It should own
 * `GET /health`
 * `GET /openapi.json`
 * `GET /docs`
+* `GET /status`
 * `POST /identify`
 
 ## `GET /health`
@@ -53,6 +54,67 @@ To render the interface, the browser client must have outbound public internet a
 ### Response Reference
 *   **200 OK**: Returns the rendered HTML document containing the Swagger UI application.
 *   **Content-Type**: `text/html; charset=utf-8`
+
+
+## `GET /status`
+
+The status endpoint reports startup readiness and pre-warming progress. It is available while the backend is loading models and local lookup data. Clients should poll this endpoint before calling `POST /identify` in production deployments.
+
+`GET /status` is deeper than `GET /health`: it reports whether the API is ready to run identification requests, but it should still avoid doing new downloads or expensive request-time setup.
+
+### Response Example
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+
+```json
+{
+  "state": "starting",
+  "ready": false,
+  "preload_models": true,
+  "started_at": "2026-06-07T21:42:35.729Z",
+  "finished_at": null,
+  "elapsed_seconds": 18.2,
+  "estimated_seconds_remaining": 42.0,
+  "tasks": [
+    {
+      "name": "detector-model",
+      "state": "succeeded",
+      "progress_current": null,
+      "progress_total": null,
+      "progress_percent": null,
+      "message": "Detector model is ready.",
+      "started_at": "2026-06-07T21:42:35.729Z",
+      "finished_at": "2026-06-07T21:42:41.100Z",
+      "elapsed_seconds": 5.37,
+      "estimated_seconds_remaining": null,
+      "error_code": null,
+      "error_message": null
+    }
+  ]
+}
+```
+
+### Status fields
+
+* `state`: Overall startup state: `starting`, `ready`, or `failed`.
+* `ready`: `true` only when `POST /identify` is available.
+* `preload_models`: Indicates whether startup eager preloading is enabled. The default is `true`.
+* `elapsed_seconds`: Total startup time elapsed so far, or final startup duration when complete.
+* `estimated_seconds_remaining`: Best-effort estimate for readiness. This may be `null` when the backend cannot estimate remaining time.
+* `tasks`: Per-task status for detector model loading, classifier model loading, taxonomy store loading, range prior store opening, and optional synthetic inference.
+
+Task states are:
+
+```text
+pending
+running
+succeeded
+failed
+skipped
+```
 
 ## `POST /identify`
 
@@ -147,7 +209,52 @@ The request body must include a JSON object containing information about the med
 * **413 Payload Too Large**: Uploaded file or decoded image exceeds configured size limits.
 * **415 Unsupported Media Type**: Unsupported file type or unavailable platform conversion adapter.
 * **422 Unprocessable Entity**: Image appears supported but cannot be decoded or converted.
-* **503 Service Unavailable**: Required model or data store is unavailable.
+* **503 Service Unavailable**: Required model or data store is unavailable, startup warming is still in progress, or startup warming failed.
+
+### Startup readiness behavior
+
+`POST /identify` is unavailable until startup pre-warming has completed. If the backend is still loading detector models, classifier models, taxonomy data, or the range prior store, the endpoint returns:
+
+```http
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+Retry-After: 10
+```
+
+```json
+{
+  "error": {
+    "code": "service_not_ready",
+    "message": "Wild Catalog is still warming required models and local data. Call GET /status for startup progress and estimated readiness.",
+    "request_id": "..."
+  }
+}
+```
+
+If startup failed, the response uses `startup_failed` and also instructs clients to call `GET /status` for failure details. `Retry-After` is included only when the backend can produce a reasonable estimate.
+
+Clients should use this operational flow:
+
+1. Start the backend.
+2. Poll `GET /status` until `ready=true`.
+3. Call `POST /identify`.
+4. If `POST /identify` returns `503`, call `GET /status` and retry later.
+
+### Error Response Format
+
+Controlled API errors use a consistent envelope:
+
+```json
+{
+  "error": {
+    "code": "unsupported_image_format",
+    "message": "Unsupported image format.",
+    "request_id": "..."
+  }
+}
+```
+
+API responses must not expose stack traces, raw subprocess stderr, local file paths, or model cache internals. Logs should include enough detail for debugging.
 
 ### Content-Type Behavior
 
