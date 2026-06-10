@@ -77,7 +77,7 @@ test-fast:
 
 # 9. Start the local development API server with auto-reload
 serve:
-	$(VENV_BIN)/uvicorn wild_catalog.api.app:app --reload --app-dir src
+	$(VENV_BIN)/uvicorn wild_catalog.api.app:app --reload --log-level debug --app-dir src
 
 # 9b. Run pre-operational setup tasks
 preop:
