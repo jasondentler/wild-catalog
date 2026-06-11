@@ -21,6 +21,21 @@ class BadRequestError(WildCatalogError):
     status_code = 400
 
 
+class ContentLengthHeaderIsNotNumberError(BadRequestError):
+    code = "content_length_NaN"
+    message = "Content-length header was not a number"
+
+
+class InvalidContentLanguageError(BadRequestError):
+    code = "content_language_invalid"
+    message = "Content-language header is invalid"
+
+
+class ImagePartMissingError(BadRequestError):
+    code = "image_part_missing"
+    message = "Required image part missing from multipart request"
+
+
 class MalformedJsonPayloadError(BadRequestError):
     code = "malformed_json_payload"
     message = "Malformed JSON payload."

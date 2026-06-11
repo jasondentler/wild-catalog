@@ -12,12 +12,39 @@ class ExifOverrideRequest(BaseModel):
     )
     captured_at: datetime | None = None
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "gps_coordinates": "29.573361, -94.389507",
+                    "captured_at": "2026-05-01T12:30:00Z",
+                }
+            ]
+        }
+    }
+
 
 class IdentifyRequest(BaseModel):
     original_filename: str = Field(default=None, examples=["IMG_7906.jpg"])
     exif_override: ExifOverrideRequest | None = None
     return_detected_images: bool = False
     common_name_language: str = "en-US"
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "original_filename": "IMG_7906.jpg",
+                    "exif_override": {
+                        "gps_coordinates": "29.573361, -94.389507",
+                        "captured_at": "2026-05-01T12:30:00Z",
+                    },
+                    "return_detected_images": True,
+                    "common_name_language": "en-US",
+                }
+            ]
+        }
+    }
 
     @model_validator(mode="before")
     @classmethod
