@@ -125,7 +125,7 @@ def test_identify_accepts_image_without_payload(
     request_kwargs: dict[str, object],
 ) -> None:
     class DummyPipeline:
-        def execute(self, command, file):
+        async def execute(self, command, file):
             return IdentifyResult(objects=())
 
     client = TestClient(app)
@@ -143,7 +143,7 @@ def test_identify_accepts_image_without_payload(
 
 def test_identify_accepts_image_with_json_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     class DummyPipeline:
-        def execute(self, command, file):
+        async def execute(self, command, file):
             return IdentifyResult(objects=())
 
     client = TestClient(app)
@@ -185,7 +185,7 @@ def test_identify_accepts_image_with_json_payload(monkeypatch: pytest.MonkeyPatc
 
 def test_identify_sets_multipart_response_format_when_accepted() -> None:
     class DummyPipeline:
-        def execute(self, command, file):
+        async def execute(self, command, file):
             return IdentifyResult(objects=())
 
     client = TestClient(app)

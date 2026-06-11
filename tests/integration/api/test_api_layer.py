@@ -22,7 +22,7 @@ class DummyPipeline:
         self.calls: list[object] = []
         self.return_detected_images = return_detected_images
 
-    def execute(self, command, file):
+    async def execute(self, command, file):
         self.calls.append((command, file))
         return IdentifyResult(
             objects=(),
@@ -219,4 +219,3 @@ def test_identify_honors_multipart_accept_for_json_only_responses() -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("multipart/mixed; boundary=")
     assert b"Content-Type: application/json" in response.content
-

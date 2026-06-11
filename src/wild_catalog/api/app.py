@@ -45,7 +45,7 @@ async def identify(
     else:
         command, file = await create_request_body_command(request)
 
-    result = pipeline.execute(command, file)
+    result = await pipeline.execute(command, file)
     response_selection = select_identify_response_format(
         accept_header=accept_header,
         return_detected_images=result.return_detected_images,
