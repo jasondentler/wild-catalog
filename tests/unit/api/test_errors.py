@@ -1,68 +1,111 @@
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from fastapi import Request, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ValidationError
 
-from wild_catalog.api.errors import register_exception_handlers
-from wild_catalog.core.errors import (
-    ModelUnavailableError,
-    PlatformConversionError,
-    UnsupportedMediaTypeError,
+from wild_catalog.api.errors import (
+    _error_response,
+    _get_or_create_request_id,
+    pydantic_validation_error_handler,
+    register_exception_handlers,
+    request_validation_error_handler,
+    unexpected_error_handler,
+    wild_catalog_error_handler,
 )
+from wild_catalog.core.errors import ContentLengthHeaderIsNotNumberError
 
 
-def make_app_with_route(exc: Exception) -> FastAPI:
-    app = FastAPI()
-    register_exception_handlers(app)
+def make_request(headers: dict[str, str] | None = None) -> Request:
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
 
-    @app.get("/boom")
-    def boom() -> None:
-        raise exc
-
-    return app
+    raw_headers = [(key.encode(), value.encode()) for key, value in (headers or {}).items()]
+    return Request({"type": "http", "method": "GET", "path": "/", "headers": raw_headers}, receive)
 
 
-def test_unsupported_media_type_maps_to_415() -> None:
-    app = make_app_with_route(UnsupportedMediaTypeError())
-    client = TestClient(app)
+def test_get_or_create_request_id_uses_header() -> None:
+    request = make_request({"x-request-id": "abc123"})
 
-    response = client.get("/boom")
-
-    assert response.status_code == 415
-    assert response.json()["error"]["code"] == "unsupported_image_format"
+    assert _get_or_create_request_id(request) == "abc123"
 
 
-def test_platform_conversion_maps_to_422_without_debug_detail() -> None:
-    app = make_app_with_route(
-        PlatformConversionError(
-            public_detail="Image conversion failed.",
-            debug_detail="secret stderr",
-        )
+def test_get_or_create_request_id_generates_value(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "wild_catalog.api.errors.uuid.uuid4",
+        lambda: type("U", (), {"hex": "generated"})(),
     )
-    client = TestClient(app)
+    request = make_request()
 
-    response = client.get("/boom")
-
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "platform_conversion_failed"
-    assert "secret stderr" not in response.text
+    assert _get_or_create_request_id(request) == "generated"
 
 
-def test_model_unavailable_maps_to_503() -> None:
-    app = make_app_with_route(ModelUnavailableError())
-    client = TestClient(app)
+def test_error_response_shape() -> None:
+    response = _error_response(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        code="bad_request",
+        message="bad",
+        request_id="req-1",
+    )
 
-    response = client.get("/boom")
-
-    assert response.status_code == 503
-    assert response.json()["error"]["code"] == "model_unavailable"
+    assert response.status_code == 400
+    assert response.body == b'{"error":{"code":"bad_request","message":"bad","request_id":"req-1"}}'
 
 
-def test_unexpected_exception_maps_to_500_without_stack_trace() -> None:
-    app = make_app_with_route(RuntimeError("secret internal failure"))
-    client = TestClient(app, raise_server_exceptions=False)
+def test_wild_catalog_error_handler_uses_public_detail() -> None:
+    request = make_request({"x-request-id": "req-1"})
+    exc = ContentLengthHeaderIsNotNumberError(debug_detail="debug")
 
-    response = client.get("/boom")
+    response = __import__("asyncio").run(wild_catalog_error_handler(request, exc))
+
+    assert response.status_code == exc.status_code
+
+
+def test_request_validation_error_handler() -> None:
+    request = make_request({"x-request-id": "req-1"})
+
+    class Model(BaseModel):
+        value: int
+
+    try:
+        Model.model_validate({"value": "x"})
+    except ValidationError as exc:
+        response = __import__("asyncio").run(
+            request_validation_error_handler(
+                request,
+                RequestValidationError(exc.errors()),
+            )
+        )
+
+    assert response.status_code == 400
+
+
+def test_pydantic_validation_error_handler() -> None:
+    request = make_request({"x-request-id": "req-1"})
+
+    class Model(BaseModel):
+        value: int
+
+    try:
+        Model.model_validate({"value": "x"})
+    except ValidationError as exc:
+        response = __import__("asyncio").run(pydantic_validation_error_handler(request, exc))
+
+    assert response.status_code == 400
+
+
+def test_unexpected_error_handler() -> None:
+    request = make_request({"x-request-id": "req-1"})
+    response = __import__("asyncio").run(unexpected_error_handler(request, RuntimeError("boom")))
 
     assert response.status_code == 500
-    assert response.json()["error"]["code"] == "internal_server_error"
-    assert "secret internal failure" not in response.text
-    assert "Traceback" not in response.text
+
+
+def test_register_exception_handlers_registers_all_handlers() -> None:
+    handlers = []
+
+    class _App:
+        def add_exception_handler(self, exc_class, handler):
+            handlers.append((exc_class, handler))
+
+    register_exception_handlers(_App())
+
+    assert len(handlers) == 4

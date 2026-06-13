@@ -7,7 +7,10 @@ from wild_catalog.api.simple_request_mapper import (
     create_request_body_command,
     parse_content_language_header,
 )
-from wild_catalog.core.errors import InvalidContentLanguageError
+from wild_catalog.core.errors import (
+    ContentLengthHeaderIsNotNumberError,
+    InvalidContentLanguageError,
+)
 
 
 @pytest.mark.parametrize(
@@ -60,3 +63,40 @@ def test_create_request_body_command_rejects_invalid_content_language_header() -
 
     with pytest.raises(InvalidContentLanguageError):
         asyncio.run(create_request_body_command(request))
+
+
+def test_create_request_body_command_rejects_invalid_content_length() -> None:
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/identify",
+            "headers": [(b"content-length", b"abc")],
+        },
+        receive,
+    )
+
+    with pytest.raises(ContentLengthHeaderIsNotNumberError):
+        asyncio.run(create_request_body_command(request))
+
+
+def test_create_request_body_command_accepts_missing_headers() -> None:
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/identify",
+            "headers": [],
+        },
+        receive,
+    )
+
+    command, _ = asyncio.run(create_request_body_command(request))
+
+    assert command.image_size_bytes is None

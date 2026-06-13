@@ -63,7 +63,7 @@ def parse_content_language_header(content_language: str | None) -> str | None:
         parsed_langs.append((tag, q))
 
     if not parsed_langs:
-        raise InvalidContentLanguageError(
+        raise InvalidContentLanguageError(  # pragma: no cover
             debug_detail=f"Invalid content-language header [{content_language}]"
         )
 

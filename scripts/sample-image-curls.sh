@@ -11,8 +11,12 @@ JPEG_IMAGE_3="${SAMPLE_DIR}/20260419-DA8A5083.jpg"
 JPEG_IMAGE_4="${SAMPLE_DIR}/20260419-DA8A5151.jpg"
 JPEG_IMAGE_5="${SAMPLE_DIR}/20260419-DA8A5506.jpg"
 JPEG_IMAGE_6="${SAMPLE_DIR}/20260419-DA8A7718.jpg"
+PNG_IMAGE="${SAMPLE_DIR}/20260402-IMG_7906.png"
+WEBP_IMAGE="${SAMPLE_DIR}/20260402-IMG_7906.webp"
 HEIC_IMAGE="${SAMPLE_DIR}/20260525-IMG_7906.heic"
 CR3_IMAGE="${SAMPLE_DIR}/20260525-IMG_7906.CR3"
+DNG_IMAGE="${SAMPLE_DIR}/20260525-IMG_7906.dng"
+DNG_IMAGE_2="${SAMPLE_DIR}/20260525-IMG_7906_1.dng"
 
 usage() {
   cat <<'EOF'
@@ -21,10 +25,19 @@ Usage:
 
 Scenarios:
   direct-jpeg
+  direct-jpeg-2
+  direct-jpeg-3
+  direct-jpeg-4
+  direct-jpeg-5
+  direct-jpeg-6
+  direct-png
+  direct-webp
   multipart-jpeg
   multipart-jpeg-payload
   multipart-jpeg-no-payload
   direct-raw
+  direct-dng
+  direct-dng-2
   direct-heic
   all
 
@@ -49,6 +62,69 @@ direct_jpeg() {
     -H 'Content-Type: image/jpeg' \
     -H 'x-filename: 20260402-IMG_7906.jpg' \
     --data-binary "@${JPEG_IMAGE_1}"
+}
+
+direct_jpeg_2() {
+  require_file "$JPEG_IMAGE_2"
+  curl -X POST "${API_URL}/identify" \
+    -H 'accept: application/json' \
+    -H 'Content-Type: image/jpeg' \
+    -H 'x-filename: 20260419-DA8A0090.jpg' \
+    --data-binary "@${JPEG_IMAGE_2}"
+}
+
+direct_jpeg_3() {
+  require_file "$JPEG_IMAGE_3"
+  curl -X POST "${API_URL}/identify" \
+    -H 'accept: application/json' \
+    -H 'Content-Type: image/jpeg' \
+    -H 'x-filename: 20260419-DA8A5083.jpg' \
+    --data-binary "@${JPEG_IMAGE_3}"
+}
+
+direct_jpeg_4() {
+  require_file "$JPEG_IMAGE_4"
+  curl -X POST "${API_URL}/identify" \
+    -H 'accept: application/json' \
+    -H 'Content-Type: image/jpeg' \
+    -H 'x-filename: 20260419-DA8A5151.jpg' \
+    --data-binary "@${JPEG_IMAGE_4}"
+}
+
+direct_jpeg_5() {
+  require_file "$JPEG_IMAGE_5"
+  curl -X POST "${API_URL}/identify" \
+    -H 'accept: application/json' \
+    -H 'Content-Type: image/jpeg' \
+    -H 'x-filename: 20260419-DA8A5506.jpg' \
+    --data-binary "@${JPEG_IMAGE_5}"
+}
+
+direct_jpeg_6() {
+  require_file "$JPEG_IMAGE_6"
+  curl -X POST "${API_URL}/identify" \
+    -H 'accept: application/json' \
+    -H 'Content-Type: image/jpeg' \
+    -H 'x-filename: 20260419-DA8A7718.jpg' \
+    --data-binary "@${JPEG_IMAGE_6}"
+}
+
+direct_png() {
+  require_file "$PNG_IMAGE"
+  curl -X POST "${API_URL}/identify" \
+    -H 'accept: application/json' \
+    -H 'Content-Type: image/png' \
+    -H 'x-filename: 20260402-IMG_7906.png' \
+    --data-binary "@${PNG_IMAGE}"
+}
+
+direct_webp() {
+  require_file "$WEBP_IMAGE"
+  curl -X POST "${API_URL}/identify" \
+    -H 'accept: application/json' \
+    -H 'Content-Type: image/webp' \
+    -H 'x-filename: 20260402-IMG_7906.webp' \
+    --data-binary "@${WEBP_IMAGE}"
 }
 
 multipart_jpeg() {
@@ -82,6 +158,24 @@ direct_raw() {
     --data-binary "@${CR3_IMAGE}"
 }
 
+direct_dng() {
+  require_file "$DNG_IMAGE"
+  curl -X POST "${API_URL}/identify" \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/octet-stream' \
+    -H 'x-filename: 20260525-IMG_7906.dng' \
+    --data-binary "@${DNG_IMAGE}"
+}
+
+direct_dng_2() {
+  require_file "$DNG_IMAGE_2"
+  curl -X POST "${API_URL}/identify" \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/octet-stream' \
+    -H 'x-filename: 20260525-IMG_7906_1.dng' \
+    --data-binary "@${DNG_IMAGE_2}"
+}
+
 direct_heic() {
   require_file "$HEIC_IMAGE"
   curl -X POST "${API_URL}/identify" \
@@ -93,10 +187,19 @@ direct_heic() {
 
 all() {
   direct_jpeg
+  direct_jpeg_2
+  direct_jpeg_3
+  direct_jpeg_4
+  direct_jpeg_5
+  direct_jpeg_6
+  direct_png
+  direct_webp
   multipart_jpeg
   multipart_jpeg_payload
   multipart_jpeg_no_payload
   direct_raw
+  direct_dng
+  direct_dng_2
   direct_heic
 }
 
@@ -106,6 +209,27 @@ main() {
   case "$scenario" in
     direct-jpeg)
       direct_jpeg
+      ;;
+    direct-jpeg-2)
+      direct_jpeg_2
+      ;;
+    direct-jpeg-3)
+      direct_jpeg_3
+      ;;
+    direct-jpeg-4)
+      direct_jpeg_4
+      ;;
+    direct-jpeg-5)
+      direct_jpeg_5
+      ;;
+    direct-jpeg-6)
+      direct_jpeg_6
+      ;;
+    direct-png)
+      direct_png
+      ;;
+    direct-webp)
+      direct_webp
       ;;
     multipart-jpeg)
       multipart_jpeg
@@ -118,6 +242,12 @@ main() {
       ;;
     direct-raw)
       direct_raw
+      ;;
+    direct-dng)
+      direct_dng
+      ;;
+    direct-dng-2)
+      direct_dng_2
       ;;
     direct-heic)
       direct_heic

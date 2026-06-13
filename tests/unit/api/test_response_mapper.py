@@ -1,7 +1,10 @@
+import asyncio
 import json
 
+from PIL import Image
+
 from wild_catalog.api.content_negotiation import ResponseFormat, ResponseSelection
-from wild_catalog.api.response_mapper import map_response
+from wild_catalog.api.response_mapper import map_multipart_response, map_response
 from wild_catalog.core.types import BoundingBox, GpsCoordinates
 from wild_catalog.pipeline.identify_result import (
     IdentifiedObject,
@@ -123,4 +126,80 @@ def test_map_response_uses_result_flag_for_multipart_negotiation() -> None:
     )
 
     assert response.status_code == 200
+    assert response.headers["content-type"].startswith("multipart/mixed; boundary=")
+
+
+def test_map_response_maps_none_gps_coordinates() -> None:
+    result = IdentifyResult(
+        objects=(
+            IdentifiedObject(
+                bounding_box=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
+                bounding_box_with_margin=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
+                gps_coordinates=None,
+                predictions=(),
+            ),
+        )
+    )
+
+    response = map_response(
+        result,
+        ResponseSelection(
+            response_format=ResponseFormat.JSON,
+            include_images=False,
+        ),
+    )
+
+    assert b'"gps_coordinates":null' in response.body
+
+
+def test_map_multipart_response_includes_images() -> None:
+    result = IdentifyResult(
+        objects=(
+            IdentifiedObject(
+                bounding_box=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
+                bounding_box_with_margin=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
+                gps_coordinates=None,
+                predictions=(),
+                cropped_image=Image.new("RGB", (1, 1), color=(255, 0, 0)),
+            ),
+        )
+    )
+    response = map_multipart_response(
+        result,
+        ResponseSelection(
+            response_format=ResponseFormat.MULTIPART,
+            include_images=True,
+        ),
+    )
+
+    assert response.media_type.startswith("multipart/mixed; boundary=")
+
+    async def collect() -> bytes:
+        body = b""
+        async for chunk in response.body_iterator:
+            body += chunk
+        return body
+
+    assert b"Content-Type: image/jpeg" in asyncio.run(collect())
+
+
+def test_map_multipart_response_skips_missing_images() -> None:
+    result = IdentifyResult(
+        objects=(
+            IdentifiedObject(
+                bounding_box=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
+                bounding_box_with_margin=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
+                gps_coordinates=None,
+                predictions=(),
+            ),
+        )
+    )
+    response = map_multipart_response(
+        result,
+        ResponseSelection(
+            response_format=ResponseFormat.MULTIPART,
+            include_images=True,
+        ),
+    )
+
     assert response.headers["content-type"].startswith("multipart/mixed; boundary=")
