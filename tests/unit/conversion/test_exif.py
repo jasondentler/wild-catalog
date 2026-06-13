@@ -1,8 +1,10 @@
+import sys
 from datetime import datetime
 from io import BytesIO
 from types import SimpleNamespace
 
 from wild_catalog.conversion import exif
+from wild_catalog.conversion.exif import extract_metadata
 
 
 def test_extract_metadata_returns_none_when_exifread_fails(monkeypatch) -> None:
@@ -80,3 +82,16 @@ def test_extract_captured_at_returns_none_for_invalid_value() -> None:
 
 def test_ratio_to_float_handles_plain_numbers() -> None:
     assert exif._ratio_to_float(1.5) == 1.5
+
+
+def test_extract_metadata_suppresses_exifread_stderr(monkeypatch, capsys) -> None:
+    def fake_process_file(image_file, details: bool = False):
+        print("File format not recognized.", file=sys.stderr)
+        return {}
+
+    monkeypatch.setattr("wild_catalog.conversion.exif.exifread.process_file", fake_process_file)
+
+    result = extract_metadata(BytesIO(b"raw bytes"))
+
+    assert result.original_filename is None
+    assert capsys.readouterr().err == ""

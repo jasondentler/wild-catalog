@@ -1,5 +1,7 @@
+from contextlib import redirect_stderr
 from datetime import datetime
 from fractions import Fraction
+from io import StringIO
 from typing import Any, BinaryIO
 
 import exifread
@@ -12,7 +14,10 @@ def extract_metadata(image_file: BinaryIO) -> ExtractedMetadata:
     image_file.seek(0)
 
     try:
-        tags = exifread.process_file(image_file, details=False)
+        # exifread can emit low-level parser warnings to stderr for RAW files
+        # that are still otherwise readable by the conversion path.
+        with redirect_stderr(StringIO()):
+            tags = exifread.process_file(image_file, details=False)
     except Exception:
         tags = {}
     finally:
