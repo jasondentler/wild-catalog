@@ -1,3 +1,6 @@
+from fastapi import HTTPException
+
+
 class WildCatalogError(Exception):
     code = "wild_catalog_error"
     message = "Wild Catalog request failed."
@@ -14,12 +17,20 @@ class WildCatalogError(Exception):
         self.public_detail = public_detail or message or self.message
         self.debug_detail = debug_detail
 
+    def to_fastapi(self) -> HTTPException:
+        return HTTPException(
+            status_code=self.status_code,
+            detail=self.public_detail or self.message,
+        )
 
 class BadRequestError(WildCatalogError):
     code = "bad_request"
     message = "Bad request."
     status_code = 400
 
+class ContentLengthHeaderMissingError(BadRequestError):
+    code = "content_length_missing"
+    message = "Required content-length header is missing"
 
 class ContentLengthHeaderIsNotNumberError(BadRequestError):
     code = "content_length_NaN"
@@ -53,6 +64,13 @@ class NotAcceptableResponseError(WildCatalogError):
 
 
 class PayloadTooLargeError(WildCatalogError):
+    def __init__(self, size_limit: int = 0):
+        message = self.message
+        if size_limit:
+            message = f"Uploaded file exceeds the configured size limit of {size_limit:,} bytes."
+
+        super().__init__(message)
+
     code = "payload_too_large"
     message = "Uploaded file exceeds the configured size limit."
     status_code = 413

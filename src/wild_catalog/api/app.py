@@ -2,6 +2,7 @@ import logging
 from typing import Annotated, BinaryIO
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import Response
 
 from wild_catalog.api.content_negotiation import select_identify_response_format
@@ -12,6 +13,12 @@ from wild_catalog.api.multipart_request_mapper import create_multipart_form_comm
 from wild_catalog.api.openapi_schemas import IDENTIFY_REQUEST_OPENAPI_EXTRA
 from wild_catalog.api.response_mapper import map_response
 from wild_catalog.api.simple_request_mapper import create_request_body_command
+from wild_catalog.core.errors import (
+    ContentLengthHeaderIsNotNumberError,
+    ContentLengthHeaderMissingError,
+    PayloadTooLargeError,
+)
+from wild_catalog.core.settings import Settings
 from wild_catalog.pipeline.identify_command import IdentifyCommand
 from wild_catalog.pipeline.identify_pipeline import IdentifyPipeline
 
@@ -19,6 +26,35 @@ logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI(title="Wild Catalog")
 register_exception_handlers(app)
+
+
+@app.middleware("http")
+async def limit_content_length(request: Request, call_next):
+    if request.method not in ["POST", "PUT", "PATCH"]:
+        return await call_next(request)
+
+    content_length = request.headers.get("content-length")
+
+    try:
+        if not content_length:
+            raise ContentLengthHeaderMissingError()
+
+        if not content_length.isdigit():
+            raise ContentLengthHeaderIsNotNumberError()
+
+        max_upload_bytes = Settings.from_env().max_upload_bytes
+        if int(content_length) > max_upload_bytes:
+            raise PayloadTooLargeError(max_upload_bytes)
+
+    except (
+        ContentLengthHeaderMissingError,
+        ContentLengthHeaderIsNotNumberError,
+        PayloadTooLargeError,
+    ) as err:
+        fastapi_exc = err.to_fastapi()
+        return await http_exception_handler(request, fastapi_exc)
+
+    return await call_next(request)
 
 
 @app.get("/health")

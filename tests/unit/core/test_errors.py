@@ -14,6 +14,21 @@ def test_payload_too_large_error_has_expected_metadata() -> None:
     assert error.public_detail == "Uploaded file exceeds the configured size limit."
 
 
+def test_payload_too_large_error_includes_size_limit_when_provided() -> None:
+    error = PayloadTooLargeError(size_limit=100_000_000)
+
+    assert error.public_detail == (
+        "Uploaded file exceeds the configured size limit of 100,000,000 bytes."
+    )
+    assert str(error) == "Uploaded file exceeds the configured size limit of 100,000,000 bytes."
+
+
+def test_payload_too_large_error_requires_int_size_limit() -> None:
+    error = PayloadTooLargeError(size_limit=0)
+
+    assert error.public_detail == "Uploaded file exceeds the configured size limit."
+
+
 def test_unsupported_media_type_error_has_expected_metadata() -> None:
     error = UnsupportedMediaTypeError()
 

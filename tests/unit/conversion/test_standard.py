@@ -40,8 +40,12 @@ def test_decode_standard_image_rejects_too_many_pixels() -> None:
         SimpleNamespace(max_upload_bytes=10_000, max_image_pixels=50),
     )
 
-    with pytest.raises(ImageTooLargeError):
+    with pytest.raises(ImageTooLargeError) as exc_info:
         service.convert(BytesIO(file_bytes))
+
+    assert exc_info.value.public_detail == (
+        "Decoded image exceeds the configured pixel limit of 0.00 MP."
+    )
 
 
 def test_decode_standard_image_rejects_invalid_bytes() -> None:

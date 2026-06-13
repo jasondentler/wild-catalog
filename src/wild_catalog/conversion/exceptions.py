@@ -1,11 +1,10 @@
 from wild_catalog.core.errors import (
-    PayloadTooLargeError,
+    PlatformConversionError as CorePlatformConversionError,
+)
+from wild_catalog.core.errors import (
     UnprocessableImageError,
     UnsupportedMediaTypeError,
     WildCatalogError,
-)
-from wild_catalog.core.errors import (
-    PlatformConversionError as CorePlatformConversionError,
 )
 
 
@@ -17,8 +16,21 @@ class UnsupportedImageFormatError(UnsupportedMediaTypeError, ImageConversionErro
     """Raised when the uploaded image format is unsupported."""
 
 
-class ImageTooLargeError(PayloadTooLargeError, ImageConversionError):
+class ImageTooLargeError(UnprocessableImageError, ImageConversionError):
     """Raised when the uploaded file or decoded image exceeds configured limits."""
+
+    code = "image_too_large"
+    message = "Decoded image exceeds the configured pixel limit."
+
+    def __init__(self, pixel_limit: int = 0) -> None:
+        message = self.message
+        if pixel_limit:
+            message = (
+                "Decoded image exceeds the configured pixel limit "
+                f"of {pixel_limit / 1_000_000:.2f} MP."
+            )
+
+        super().__init__(message)
 
 
 class InvalidImageError(UnprocessableImageError, ImageConversionError):

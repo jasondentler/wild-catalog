@@ -11,6 +11,7 @@ from wild_catalog.conversion.format_sniffers.format_sniffer_chain import (
 )
 from wild_catalog.conversion.format_sniffing import sniff_image_format
 from wild_catalog.conversion.types import ConvertedImage, ExtractedMetadata
+from wild_catalog.core.errors import PayloadTooLargeError
 from wild_catalog.core.settings import Settings
 from wild_catalog.core.types import GpsCoordinates
 
@@ -68,10 +69,7 @@ class ImageConversionService:
             file_bytes.extend(chunk)
             if len(file_bytes) > self._settings.max_upload_bytes:
                 image_file.seek(0)
-                raise ImageTooLargeError(
-                    f"Upload has {len(file_bytes)} bytes, "
-                    f"which exceeds limit {self._settings.max_upload_bytes}."
-                )
+                raise PayloadTooLargeError(self._settings.max_upload_bytes)
 
         image_file.seek(0)
 
@@ -80,10 +78,7 @@ class ImageConversionService:
     def _ensure_image_within_limits(self, image: Image.Image) -> None:
         width, height = image.size
         if width * height > self._settings.max_image_pixels:
-            raise ImageTooLargeError(
-                f"Decoded image has {width * height} pixels, "
-                f"which exceeds limit {self._settings.max_image_pixels}."
-            )
+            raise ImageTooLargeError(self._settings.max_image_pixels)
 
 
 def extract_metadata_from_bytes(file_bytes: bytes) -> ExtractedMetadata:

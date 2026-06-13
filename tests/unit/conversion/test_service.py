@@ -6,10 +6,10 @@ import pytest
 from PIL import Image
 
 from wild_catalog.conversion.exceptions import (
-    ImageTooLargeError,
     UnsupportedImageFormatError,
 )
 from wild_catalog.conversion.service import ImageConversionService
+from wild_catalog.core.errors import PayloadTooLargeError
 from wild_catalog.core.types import GpsCoordinates
 
 
@@ -48,11 +48,15 @@ def test_conversion_service_rejects_upload_larger_than_limit() -> None:
     settings = SimpleNamespace(max_upload_bytes=3, max_image_pixels=10_000)
     service = ImageConversionService(settings)
 
-    with pytest.raises(ImageTooLargeError):
+    with pytest.raises(PayloadTooLargeError) as exc_info:
         service.process_and_extract_metadata(
             image_file=BytesIO(b"too large"),
             original_filename="image.jpg",
         )
+
+    assert exc_info.value.public_detail == (
+        "Uploaded file exceeds the configured size limit of 3 bytes."
+    )
 
 
 def test_read_upload_bytes_stops_reading_after_limit() -> None:
@@ -76,10 +80,13 @@ def test_read_upload_bytes_stops_reading_after_limit() -> None:
     service = ImageConversionService(SimpleNamespace(max_upload_bytes=5, max_image_pixels=10_000))
     file_obj = ChunkedFile()
 
-    with pytest.raises(ImageTooLargeError):
+    with pytest.raises(PayloadTooLargeError) as exc_info:
         service._read_upload_bytes(file_obj)
 
     assert file_obj.calls == 2
+    assert exc_info.value.public_detail == (
+        "Uploaded file exceeds the configured size limit of 5 bytes."
+    )
 
 
 def test_read_upload_bytes_rewinds_on_success() -> None:
