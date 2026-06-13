@@ -42,6 +42,7 @@ Scenarios:
   direct-dng-2
   direct-heic
   direct-oversized
+  multipart-large-payload
   all
 
 Environment:
@@ -230,6 +231,29 @@ direct_oversized() {
   return "$curl_status"
 }
 
+multipart_large_payload() {
+  require_file "$JPEG_IMAGE_1"
+
+  local temp_payload
+  local curl_status=0
+  temp_payload="$(mktemp "${TMPDIR:-/tmp}/wild-catalog-large-payload.XXXXXX")"
+
+  dd if=/dev/zero of="$temp_payload" bs=1m count="$(( (HUGE_PAYLOAD_SIZE_BYTES + 1048575) / 1048576 ))" 2>/dev/null
+
+  announce "Multipart upload with a large payload to test the content-length limiter"
+  set +e
+  curl -sS -X POST "${API_URL}/identify" \
+    -H 'accept: multipart/mixed' \
+    -F "image=@${JPEG_IMAGE_1};type=image/jpeg" \
+    -F "payload=@${temp_payload};type=application/json"
+  curl_status=$?
+  set -e
+
+  rm -f "$temp_payload"
+
+  return "$curl_status"
+}
+
 all() {
   direct_jpeg
   direct_jpeg_2
@@ -247,6 +271,7 @@ all() {
   direct_dng_2
   direct_heic
   direct_oversized
+  multipart_large_payload
 }
 
 main() {
@@ -300,6 +325,9 @@ main() {
       ;;
     direct-oversized)
       direct_oversized
+      ;;
+    multipart-large-payload)
+      multipart_large_payload
       ;;
     all)
       all

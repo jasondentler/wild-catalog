@@ -133,13 +133,33 @@ The shell script prints `Oversized payload upload to test the content-length lim
 By default the generated payload is one byte larger than `WILD_CATALOG_MAX_UPLOAD_BYTES` if that environment variable is set, or one byte larger than `100000000` otherwise.
 
 ```bash
+max_upload_bytes="${WILD_CATALOG_MAX_UPLOAD_BYTES:-100000000}"
+huge_payload_size_bytes="${HUGE_PAYLOAD_SIZE_BYTES:-$((max_upload_bytes + 1))}"
 temp_payload="$(mktemp /tmp/wild-catalog-oversized.XXXXXX)"
-dd if=/dev/zero of="$temp_payload" bs=1m count=96 2>/dev/null
+dd if=/dev/zero of="$temp_payload" bs=1m count="$(( (huge_payload_size_bytes + 1048575) / 1048576 ))" 2>/dev/null
 curl -i -X POST 'http://127.0.0.1:8000/identify' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/octet-stream' \
   -H 'x-filename: oversized.bin' \
   --data-binary "@$temp_payload"
+rm -f "$temp_payload"
+```
+
+## Multipart Large Payload Upload
+
+Use this to verify the content-length limiter rejects an oversized multipart request before form parsing.
+The request asks for `multipart/mixed` in the response and sends a large `payload` form part.
+The shell script prints `Multipart upload with a large payload to test the content-length limiter` before sending the request.
+
+```bash
+max_upload_bytes="${WILD_CATALOG_MAX_UPLOAD_BYTES:-100000000}"
+huge_payload_size_bytes="${HUGE_PAYLOAD_SIZE_BYTES:-$((max_upload_bytes + 1))}"
+temp_payload="$(mktemp /tmp/wild-catalog-large-payload.XXXXXX)"
+dd if=/dev/zero of="$temp_payload" bs=1m count="$(( (huge_payload_size_bytes + 1048575) / 1048576 ))" 2>/dev/null
+curl -i -X POST 'http://127.0.0.1:8000/identify' \
+  -H 'accept: multipart/mixed' \
+  -F 'image=@sample-images/20260402-IMG_7906.jpg;type=image/jpeg' \
+  -F "payload=@$temp_payload;type=application/json"
 rm -f "$temp_payload"
 ```
 
