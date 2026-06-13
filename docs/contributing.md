@@ -69,6 +69,8 @@ Build your environment, install dependencies, lint, and run the test suite with 
 make
 ```
 
+The install step creates `.venv`, installs a local copy of [`uv`](https://docs.astral.sh/uv/), and then uses that `.venv` copy of `uv` to install the project with development dependencies.
+
 ---
 
 ### 🪟 Option B: Windows Setup
@@ -93,6 +95,8 @@ Build your environment, install dependencies, lint, and run the test suite with 
 ```powershell
 make
 ```
+
+The install step creates `.venv`, installs a local copy of [`uv`](https://docs.astral.sh/uv/), and then uses that `.venv` copy of `uv` to install the project with development dependencies.
 
 ---
 
@@ -121,7 +125,57 @@ Build your isolated environment, download app dependencies, lint, and run the te
 make
 ```
 
+The install step creates `.venv`, installs a local copy of [`uv`](https://docs.astral.sh/uv/), and then uses that `.venv` copy of `uv` to install the project with development dependencies.
+
 ---
+
+## Dependency Management
+
+Wild Catalog uses [`uv`](https://docs.astral.sh/uv/) for project dependency resolution after the virtual environment has been created.
+
+The default setup path is:
+
+```bash
+make install
+```
+
+That target:
+
+* upgrades `pip`
+* constrains `setuptools<82` for compatibility with the installed PyTorch stack
+* installs `uv` into `.venv`
+* installs the project with development dependencies using `.venv/bin/uv pip install -e ".[dev]"`
+
+The PyTorch Wildlife detector stack is a required dependency. The project pins `PytorchWildlife` and related dependencies in `pyproject.toml`, and uses `[tool.uv].override-dependencies` to prevent `uv` from resolving GPL/AGPL YOLO packages that are not part of the intended runtime dependency set.
+
+### Lockfile Workflow
+
+Generate or update the lockfile from the repository root:
+
+```bash
+.venv/bin/uv lock
+```
+
+On Windows, use `.venv/Scripts/uv` instead of `.venv/bin/uv`.
+
+Do not pass `--extra dev` to `uv lock`; this project's installed `uv` version selects extras during sync or install, not during lockfile generation.
+
+To sync a development environment from the lockfile:
+
+```bash
+.venv/bin/uv sync --extra dev
+```
+
+Commit `uv.lock` alongside any dependency changes in `pyproject.toml`.
+
+After changing dependencies, verify the environment:
+
+```bash
+.venv/bin/python -m pip check
+make license-check
+```
+
+If `licensecheck` reports dependencies that `uv` is intentionally overriding, verify the installed environment with `pip check` and review the resolver configuration in `pyproject.toml` before changing license policy.
 
 ## 💡 Daily Development Shortcuts
 
@@ -244,7 +298,7 @@ Project maintainers will review your code. You may be asked to make adjustments.
 ## ❓ Questions or Need Help?
 If you have any questions about setting up your environment or need guidance on how to implement a feature, feel free to open a [GitHub Issue](https://github.com/jasondentler/wild-catalog/issues).
 
-## Preop, and testing workflow
+## Preop and Testing Workflow
 
 Before running the full integration test suite, prepare durable assets with:
 
@@ -264,3 +318,16 @@ tests/integration/
 Do not create tests directly under `tests/`.
 
 `make clean` may remove generated `data/` assets. Re-run `make preop` after cleaning if you need real-model or local-data integration tests.
+
+## Documentation Contributions
+
+When changing code that affects public behavior, update the matching docs in `docs/` and the relevant OpenAPI examples or tests.
+
+Good documentation updates usually include:
+
+* request and response shape changes in `docs/api-layer.md`
+* pipeline behavior changes in the stage docs
+* new curl examples in `docs/sample-image-curl-commands.md`
+* test updates when documented behavior changes
+
+If you are unsure whether a change is public-facing, update the docs alongside the code.

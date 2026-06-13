@@ -21,6 +21,19 @@ dependencies = [
     "python-multipart>=0.0.9,<1.0",
     "rawpy>=0.21,<1.0",
     "uvicorn[standard]>=0.30,<1.0",
+
+    # --- Apache 2.0 Compliant PyTorch Wildlife Stack ---
+    "torch>=2.0.0",
+    "torchvision",
+    "torchaudio",
+    "supervision==0.23.0",
+    "chardet",
+    "gradio",
+    "lightning",
+    "omegaconf",
+    "timm",
+    "wget",
+    "PytorchWildlife==1.3.0",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +46,13 @@ dev = [
     "pre-commit",
     "conventional-pre-commit",
     "commitizen",
+]
+
+# --- Prevent uv from downloading AGPL packages ---
+[tool.uv]
+override-dependencies = [
+    "ultralytics ; sys_platform == 'never'",
+    "yolov5 ; sys_platform == 'never'",
 ]
 
 [tool.hatch.metadata]

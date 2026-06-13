@@ -1,4 +1,4 @@
-.PHONY: all clean venv install install-hooks license-check lint lint-fix test test-fast check-prereqs serve pr preop preop-taxonomy-dwca preop-range-maps preop-classifier-model preop-detector-model
+.PHONY: all clean venv install install-hooks license-check lint lint-fix test test-fast check-prereqs serve pr commit preop preop-taxonomy-dwca preop-range-maps preop-classifier-model preop-detector-model
 
 # 1. Detect Operating System and set path/variable rules
 ifeq ($(OS),Windows_NT)
@@ -48,10 +48,11 @@ venv: check-prereqs
 	@echo "Creating venv using: $(PYTHON_EXE)"
 	"$(PYTHON_EXE)" -m venv .venv
 
-# 5. Upgrade pip and install dependencies
+# 5. Upgrade pip, bundle local uv, and install dependencies safely
 install:
-	$(VENV_BIN)/python -m pip install --upgrade pip
-	$(VENV_BIN)/python -m pip install -e ".[dev]"
+	$(VENV_BIN)/python -m pip install --upgrade pip "setuptools<82" wheel
+	$(VENV_BIN)/python -m pip install uv
+	$(VENV_BIN)/uv pip install -e ".[dev]"
 
 install-hooks:
 	$(VENV_BIN)/pre-commit install --hook-type commit-msg

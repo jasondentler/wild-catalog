@@ -6,6 +6,16 @@ Wild Catalog is an open-source tool that looks at nature photos and automaticall
 
 * [Contributing](./docs/contributing.md)
 
+## Development Setup
+
+Use the repository [`makefile`](./makefile) to create the local Python 3.13 environment and install dependencies:
+
+```bash
+make
+```
+
+The install flow bootstraps [`uv`](https://docs.astral.sh/uv/) inside `.venv` and uses it to resolve the project dependencies, including the PyTorch Wildlife stack. See [Contributing](./docs/contributing.md) for platform setup details and lockfile workflow.
+
 ## License
 
 Copyright 2026 Jason Dentler
