@@ -4,7 +4,6 @@ The API layer has the following endpoints:
 
 * `GET /health`
 * `GET /openapi.json`
-* `GET /swagger.json`
 * `POST /identify`
 
 ## GET /health
@@ -44,40 +43,70 @@ checks.
 
 ## POST /identify
 
-The API gateway's primary endpoint is `POST /identify`. Send an image to be processed, in any of these formats:
+The API gateway's primary endpoint is `POST /identify`.
 
-    * Standard image formats for `pillow`:
-        * JPEG / JPG: `Content-Type: image/jpeg`
-        * PNG: `Content-Type: image/png`
-        * WebP: `Content-Type: image/webp`
-    * RAW image formats using `rawpy`:
-        * Use `Content-Type: application/octet-stream`
-        * Adobe Digital Negative (`.dng`)
-        * Canon: `.cr3` (newer bodies like EOS R series), `.cr2`, `.crw` (legacy bodies)
-        * dji: `.dng`
-        * Fujifilm: `.raf` (including their unique X-Trans and GFX sensor formats).
-        * GoPro: `.gpr`
-        * Hasselblad: `.3fr`, `.fff`
-        * Kodak: `.dcr`, `.k25`, `.kdc`
-        * Leaf: `.mos`
-        * Nikon: `.nef`, `.nrw` (high-end compact coolpix lines)
-        * OM System / Olympus: `.orf`
-        * Panasonic / Lumix: `.rw2`
-        * Pentax: `.pef`
-        * Sony: `.arw`, `.srf`, `.sr2`
-        * Phase One: `.iiq`
+Send an image to be processed in one of two request shapes:
 
-Use the appropriate `Content-Type` header value for the image format being uploaded, or use `application/octet-stream` for any of the supported image formats.
+* Direct upload: send the image bytes in the request body.
+* Multipart upload: send `multipart/form-data` with an `image` part and an optional `payload` part containing JSON.
+
+Supported direct upload formats:
+
+* Standard image formats handled by Pillow:
+  * JPEG / JPG: `Content-Type: image/jpeg`
+  * PNG: `Content-Type: image/png`
+  * WebP: `Content-Type: image/webp`
+* RAW image formats handled by `rawpy`:
+  * Use `Content-Type: application/octet-stream`
+  * Adobe Digital Negative (`.dng`)
+  * Canon: `.cr3`, `.cr2`, `.crw`
+  * DJI: `.dng`
+  * Fujifilm: `.raf`
+  * GoPro: `.gpr`
+  * Hasselblad: `.3fr`, `.fff`
+  * Kodak: `.dcr`, `.k25`, `.kdc`
+  * Leaf: `.mos`
+  * Nikon: `.nef`, `.nrw`
+  * OM System / Olympus: `.orf`
+  * Panasonic / Lumix: `.rw2`
+  * Pentax: `.pef`
+  * Sony: `.arw`, `.srf`, `.sr2`
+  * Phase One: `.iiq`
+
 For direct image uploads, also include:
 
 * `x-filename` (optional): the original filename to use if the upload is not multipart. If omitted, the server will fall back to the multipart filename when available or leave it unset.
 * `content-language`: optional fallback language for common names
-* `content-length`: optional byte size of the uploaded image
+* `content-length`: required for `POST`, `PUT`, and `PATCH` requests so the upload size limiter can reject oversized requests before image parsing begins
+
+`content-language` accepts a language tag or comma-separated weighted list. The highest-weight tag is used when no `common_name_language` is supplied in the multipart payload.
 
 You may also send a `multipart/form-data` request containing these parts:
 
 1. an image as above
 2. an optional `payload` form field containing JSON
+
+### Payload Size Limit Middleware
+
+`POST /identify` is protected by an HTTP middleware that checks the request
+`Content-Length` header before the request body is handed to the route handler.
+This keeps oversized uploads out of the image parsing and conversion path.
+
+The limit is configured by `WILD_CATALOG_MAX_UPLOAD_BYTES`. If the environment
+variable is not set, the default is `100000000` bytes.
+
+The middleware applies to `POST`, `PUT`, and `PATCH` requests. It does not run
+for methods that normally do not carry a request body, such as `GET`.
+
+#### Middleware Rejections
+
+* Missing `Content-Length`: rejected as `400 Bad Request`.
+* Non-numeric `Content-Length`: rejected as `400 Bad Request`.
+* `Content-Length` greater than `WILD_CATALOG_MAX_UPLOAD_BYTES`: rejected as `413 Payload Too Large`.
+
+The middleware checks only the declared `Content-Length` value. It does not
+perform content negotiation or image format detection; those remain downstream
+API and conversion concerns.
 
 ### JSON Request Payload Reference
 
@@ -85,12 +114,12 @@ The request body must be a JSON object containing information about the media up
 
 #### Property Details
 
-*   `original_filename` (string, **required**): The exact name of the uploaded file.
-*   `exif_override` (object, optional): Metadata values to supplement or replace the file's original data.
-    *   `gps_coordinates` (string, optional): Latitude and longitude separated by a comma. Uses floating-point notation.
-    *   `captured_at` (string, optional): The date and time the photo was taken. Must use ISO 8601 format.
-*   `return_detected_images` (boolean, optional): Set to `true` to include cropped images of detected subjects in the response. Defaults to `false`.
-*   `common_name_language` (string, optional): Specifies the language locale code for the returned common names of organisms. Defaults to `en-US`.
+* `original_filename` (string, required): The exact name of the uploaded file.
+* `exif_override` (object, optional): Metadata values to supplement or replace the file's original data.
+  * `gps_coordinates` (string, optional): Latitude and longitude separated by a comma.
+  * `captured_at` (string, optional): The date and time the photo was taken in ISO 8601 format.
+* `return_detected_images` (boolean, optional): Set to `true` to include cropped images of detected subjects in the response. Defaults to `false`.
+* `common_name_language` (string, optional): Locale code for returned common names. Defaults to `en-US`.
 
 ---
 
@@ -132,6 +161,8 @@ The request body must be a JSON object containing information about the media up
 }
 ```
 
+Note: the JSON schema above mirrors the example payload shape used in the OpenAPI document. In practice, `original_filename` is required when the JSON payload is provided, but direct uploads can also supply the filename through `x-filename` or multipart filename metadata.
+
 ---
 
 ### Request Example
@@ -154,10 +185,10 @@ The request body must be a JSON object containing information about the media up
 *   **200 OK**: Processing completed successfully. Returns data according to the request configuration.
 
 #### Response Content-Type Behavior
-*   **If `return_detected_images` is `true`**: The API returns `multipart/mixed` when the client's `Accept` header allows it. The first part is always the JSON payload, followed by subsequent parts containing the cropped binary JPEG image files with margins applied.
-*   **If `return_detected_images` is `false`**: The API honors the client's `Accept` header.
-    *   `application/json`: Returns only the JSON payload. (Default if no `Accept` header is provided).
-    *   `multipart/mixed`: Returns a multipart package containing only the JSON payload part.
+* If `return_detected_images` is `true`: the API returns `multipart/mixed` when the client's `Accept` header allows it. The first part is always the JSON payload, followed by cropped JPEG image parts when available.
+* If `return_detected_images` is `false`: the API honors the client's `Accept` header.
+  * `application/json`: Returns only the JSON payload. This is the default when `Accept` is absent.
+  * `multipart/mixed`: Returns a multipart package containing only the JSON payload part.
 
 ---
 
@@ -165,16 +196,16 @@ The request body must be a JSON object containing information about the media up
 
 The root response payload is a JSON array of zero or more detected object structures.
 
-*   `bounding_box` (object): Coordinates detailing the exact boundary of the entity in the original image.
-    *   `xmin` / `ymin` / `xmax` / `ymax` / `height` / `width` (integer): Pixel coordinates of the crop boundaries + height and width.
-*   `bounding_box_with_margin` (object): Coordinates detailing the boundary with extra margin padding applied.
-    *   `xmin` / `ymin` / `xmax` / `ymax` / `height` / `width` (integer): Pixel coordinates of the padded crop boundaries + height and width.
-*   `gps_coordinates` (array of two numbers / null): Decimal latitude and longitude used for the identification request, after applying any EXIF override.
-*   `predictions` (array): A list of classification hypotheses for the specific bounding box.
-    *   `confidence` (number): Prediction probability score ranging from `0.0` to `1.0`.
-    *   `is_endemic` (boolean): Flag indicating if the predicted species is endemic to the provided GPS coordinates.
-    *   `taxonomy` (array of strings): The complete scientific taxonomic lineage ordered from highest rank to lowest rank (e.g., Kingdom down to Species).
-    *   `taxonomy_common_names` (array of strings): The localized common names matching each equivalent rank index in the `taxonomy` array, localized to the requested language. Birder-backed predictions resolve these names from the iNaturalist Taxonomy DarwinCore Archive.
+* `bounding_box` (object): Coordinates for the exact entity boundary in the original image.
+  * `xmin`, `ymin`, `xmax`, `ymax`, `height`, `width` (integer): Pixel coordinates and dimensions.
+* `bounding_box_with_margin` (object): Coordinates for the boundary after margin padding is applied.
+  * `xmin`, `ymin`, `xmax`, `ymax`, `height`, `width` (integer): Pixel coordinates and dimensions.
+* `gps_coordinates` (array of two numbers or null): Decimal latitude and longitude used for the request, after applying any EXIF override.
+* `predictions` (array): Classification hypotheses for the bounding box.
+  * `confidence` (number): Prediction score from `0.0` to `1.0`.
+  * `is_present` (boolean): Indicates whether the prediction is considered present.
+  * `taxonomy` (array of strings): Scientific taxonomic lineage ordered from highest rank to lowest rank.
+  * `taxonomy_common_names` (array of strings): Localized common names matching the taxonomy ranks.
 
 ---
 
@@ -203,7 +234,7 @@ The root response payload is a JSON array of zero or more detected object struct
     "predictions": [
       {
         "confidence": 0.982,
-        "is_endemic": true,
+        "is_present": true,
         "taxonomy": [
           "Animalia",
           "Chordata",
@@ -225,7 +256,7 @@ The root response payload is a JSON array of zero or more detected object struct
       },
       {
         "confidence": 0.015,
-        "is_endemic": true,
+        "is_present": true,
         "taxonomy": [
           "Animalia",
           "Chordata",
@@ -283,7 +314,7 @@ Content-Type: application/json
     "predictions": [
       {
         "confidence": 0.982,
-        "is_endemic": true,
+        "is_present": true,
         "taxonomy": [
           "Animalia",
           "Chordata",
@@ -305,7 +336,7 @@ Content-Type: application/json
       },
       {
         "confidence": 0.015,
-        "is_endemic": true,
+        "is_present": true,
         "taxonomy": [
           "Animalia",
           "Chordata",

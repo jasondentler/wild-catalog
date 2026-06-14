@@ -146,7 +146,9 @@ That target:
 * installs `uv` into `.venv`
 * installs the project with development dependencies using `.venv/bin/uv pip install -e ".[dev]"`
 
-The PyTorch Wildlife detector stack is a required dependency. The project pins `PytorchWildlife` and related dependencies in `pyproject.toml`, and uses `[tool.uv].override-dependencies` to prevent `uv` from resolving GPL/AGPL YOLO packages that are not part of the intended runtime dependency set.
+The PyTorch-Wildlife detector stack is a required dependency. The project pins `PytorchWildlife` in `pyproject.toml`, and uses `[tool.uv].override-dependencies` to prevent `uv` from resolving GPL/AGPL YOLO packages that are not part of the intended runtime dependency set.
+
+The runtime detector uses PyTorch-Wildlife's Apache RT-DETR MegaDetector v6 backend (`MegaDetectorV6Apache`) by default. Some PyTorch-Wildlife package imports still reference optional audio, TensorBoard, YOLO, or Ultralytics modules even when the Apache RT-DETR backend is the only detector being used. Wild Catalog provides narrow import compatibility shims for those unused optional paths so the runtime dependency set stays aligned with the intended detector backend.
 
 ### Lockfile Workflow
 
@@ -191,7 +193,16 @@ Once your environment is built via the initial [`make`](https://www.gnu.org/soft
 
 ## Pre-operational data and model setup
 
-Wild Catalog separates durable setup work from request-time `/identify` behavior. `POST /identify` must not download models, download taxonomy archives, compile range maps, or parse large raw data archives.
+Wild Catalog separates durable setup work from request-time `/identify` behavior. `POST /identify` should not download models, download taxonomy archives, compile range maps, or parse large raw data archives.
+
+Detector assets currently use these project-local paths:
+
+```text
+models/MDV6-apa-rtdetr-e.pth
+models/torch-hub/
+```
+
+Set `TORCH_HOME` if you need Torch Hub to use a different cache location.
 
 Use the pre-operational commands before running real-model workflows:
 
@@ -208,6 +219,8 @@ make preop-range-maps
 make preop-taxonomy-dwca
 ```
 
+The detector preop flow is the intended durable setup path for MegaDetector weights and the RT-DETR backbone cache. Until that command is re-added, detector integration tests may still download those assets on demand.
+
 Do not add new make commands for testing. Use the existing test commands:
 
 ```bash
@@ -218,25 +231,15 @@ make pr
 
 ## Running the API locally
 
-The default startup behavior is eager warmup:
-
-```text
-WILD_CATALOG_PRELOAD_MODELS=true
-```
-
-When you run:
+Run the API with:
 
 ```bash
 make serve
 ```
 
-the HTTP server can start while warmup continues in the background. During that time:
+The current API exposes `GET /health`, `GET /openapi.json`, and `POST /identify`.
 
-* `GET /health` returns a lightweight service heartbeat.
-* `GET /status` reports startup progress and readiness.
-* `POST /identify` returns `503 Service Unavailable` until the backend is ready.
-
-Use this opt-out only for local development. Production and realistic integration testing should use the default eager warmup.
+`GET /health` is a lightweight heartbeat. It does not verify model availability or perform detector warmup.
 
 ## 🛠️ Development Workflow
 
@@ -255,7 +258,7 @@ All contributions require tests to ensure stability and prevent regressions. I u
    ```bash
    make test-fast
    ```
-3. **Run Slow Model Tests**: Before opening a PR, you must verify the full suite with real-model tests enabled. This requires the installed runtime ML dependencies and may download YOLO and Birder model weights on the first run:
+3. **Run Slow Model Tests**: Before opening a PR, you must verify the full suite with real-model tests enabled. This requires the installed runtime ML dependencies and may download MegaDetector, RT-DETR backbone, and classifier assets on the first run:
    ```bash
    make test
    ```
