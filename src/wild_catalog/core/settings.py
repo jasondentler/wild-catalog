@@ -1,6 +1,17 @@
 import os
 from dataclasses import dataclass
 
+MDV6_APACHE_RTDETR_E_URL = (
+    "https://zenodo.org/records/15398270/files/"
+    "MDV6-apa-rtdetr-e.pth?download=1"
+)
+
+MDV6_APACHE_RTDETR_C_URL = (
+    "https://zenodo.org/records/15398270/files/"
+    "MDV6-apa-rtdetr-c.pth?download=1"
+)
+
+
 DEFAULTS = {
     "WILD_CATALOG_MAX_UPLOAD_BYTES": 100_000_000,
     "WILD_CATALOG_MAX_IMAGE_PIXELS": 11_648 * 8_742,

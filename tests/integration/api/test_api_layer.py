@@ -7,11 +7,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import wild_catalog.api.dependencies as api_dependencies
 from wild_catalog.api.app import app
 from wild_catalog.api.dependencies import get_identify_pipeline
 from wild_catalog.api.openapi_schemas import IDENTIFY_REQUEST_OPENAPI_EXTRA
-from wild_catalog.core.settings import Settings
 from wild_catalog.pipeline.identify_result import IdentifyResult
 
 SAMPLE_IMAGES_DIR = Path("sample-images")
@@ -399,7 +397,10 @@ def test_identify_honors_multipart_accept_for_json_only_responses() -> None:
 )
 def test_identify_rejects_heic_upload(monkeypatch: pytest.MonkeyPatch) -> None:
     client = TestClient(app)
-    monkeypatch.setattr(api_dependencies, "get_settings", lambda: Settings())
+    monkeypatch.setattr(
+        "wild_catalog.api.dependencies.WildlifeDetector",
+        lambda: object(),
+    )
 
     response = client.post(
         "/identify",

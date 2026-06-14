@@ -1,23 +1,5 @@
-from dataclasses import dataclass
+from wild_catalog.core.bounding_box import BoundingBox
+from wild_catalog.core.detection import Detection
+from wild_catalog.core.gps_coordinates import GpsCoordinates
 
-
-@dataclass(frozen=True, slots=True)
-class BoundingBox:
-    xmin: int
-    ymin: int
-    xmax: int
-    ymax: int
-
-    @property
-    def width(self) -> int:
-        return self.xmax - self.xmin
-
-    @property
-    def height(self) -> int:
-        return self.ymax - self.ymin
-
-
-@dataclass(frozen=True, slots=True)
-class GpsCoordinates:
-    latitude: float
-    longitude: float
+__all__ = ["BoundingBox", "Detection", "GpsCoordinates"]

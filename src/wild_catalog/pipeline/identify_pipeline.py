@@ -5,12 +5,20 @@ from wild_catalog.conversion.service import ImageConversionService
 from wild_catalog.core.settings import Settings
 from wild_catalog.pipeline.identify_command import IdentifyCommand
 from wild_catalog.pipeline.identify_result import IdentifyResult
+from wild_catalog.pipeline.noop_wildlife_detector import NoopWildlifeDetector
+from wild_catalog.wildlife_detection.detector import Detector
 
 
 class IdentifyPipeline:
-    def __init__(self, settings: Settings, conversion: ImageConversionService):
+    def __init__(
+        self,
+        settings: Settings,
+        conversion: ImageConversionService,
+        wildlife_detector: Detector | None = None,
+    ):
         self._settings = settings
         self._conversion = conversion
+        self._wildlife_detector = wildlife_detector or NoopWildlifeDetector()
 
     async def execute(
         self,
@@ -35,5 +43,9 @@ class IdentifyPipeline:
                 else None
             ),
         )
-        _ = converted
+
+        normalized_image = getattr(converted, "image", converted)
+        detections = self._wildlife_detector.detect(normalized_image)
+
+        _ = detections
         return IdentifyResult([], False)
