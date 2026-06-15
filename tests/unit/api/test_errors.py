@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import Request, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
@@ -50,13 +52,16 @@ def test_error_response_shape() -> None:
     assert response.body == b'{"error":{"code":"bad_request","message":"bad","request_id":"req-1"}}'
 
 
-def test_wild_catalog_error_handler_uses_public_detail() -> None:
+def test_wild_catalog_error_handler_uses_public_detail(caplog) -> None:
     request = make_request({"x-request-id": "req-1"})
     exc = ContentLengthHeaderIsNotNumberError(debug_detail="debug")
 
+    caplog.set_level(logging.WARNING, logger="uvicorn.error")
     response = __import__("asyncio").run(wild_catalog_error_handler(request, exc))
 
     assert response.status_code == exc.status_code
+    assert caplog.records[0].exc_info is None
+    assert caplog.records[0].name == "uvicorn.error"
 
 
 def test_request_validation_error_handler() -> None:

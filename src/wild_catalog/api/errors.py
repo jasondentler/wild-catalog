@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from wild_catalog.core.errors import WildCatalogError
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -30,7 +30,6 @@ async def wild_catalog_error_handler(
         exc.status_code,
         request_id,
         exc.debug_detail or str(exc),
-        exc_info=True,
     )
 
     return _error_response(
