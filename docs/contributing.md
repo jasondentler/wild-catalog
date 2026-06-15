@@ -188,7 +188,7 @@ Once your environment is built via the initial [`make`](https://www.gnu.org/soft
 *   **`make test`** — Runs the full test suite, including end-to-end integration checks.
 *   **`make lint`** — Runs code linting checks using [Ruff](https://ruff.rs/).
 *   **`make lint-fix`** — Automatically fixes safe code style errors and organizes imports.
-*   **`make clean`** — Wipes generated local state, including `.venv` and the generated `data/` folder, if you need to perform a fresh reinstall.
+*   **`make clean`** — Wipes generated local state, including `.venv`, `data/`, and `models/`, if you need to perform a fresh reinstall.
 
 
 ## Pre-operational data and model setup
@@ -320,7 +320,7 @@ tests/integration/
 
 Do not create tests directly under `tests/`.
 
-`make clean` may remove generated `data/` assets. Re-run `make preop` after cleaning if you need real-model or local-data integration tests.
+`make clean` may remove generated `data/` and `models/` assets. Re-run `make preop` after cleaning if you need real-model or local-data integration tests.
 
 ## Documentation Contributions
 

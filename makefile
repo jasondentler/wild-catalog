@@ -42,6 +42,7 @@ check-prereqs:
 clean:
 	-$(RM_RF) .venv
 	-$(RM_RF) data
+	-$(RM_RF) models
 
 # 4. Create a new virtual environment
 venv: check-prereqs
