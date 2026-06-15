@@ -2,7 +2,7 @@
 
 Filters redundant or nearly identical detection boxes for the same broad organism candidate.
 
-The service accepts an iterable of project `Detection` objects and returns a list with lower-confidence duplicates removed.
+The `DetectionDeduplicator` pipeline stage accepts an iterable of project `Detection` objects and returns a list with lower-confidence duplicates removed.
 
 ## Matching Rule
 

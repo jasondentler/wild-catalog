@@ -24,6 +24,7 @@ It is responsible for:
 * streaming the uploaded bytes into the conversion stage
 * carrying forward request metadata and overrides
 * invoking downstream detection and classification work
+* invoking the injected detection deduplication stage before object mapping
 * returning a structured `IdentifyResult` for the API layer to serialize
 
 ## Inputs
@@ -46,7 +47,7 @@ The pipeline returns an `IdentifyResult` containing:
 * optional GPS coordinates from EXIF metadata or request override, when known
 * the `return_detected_images` flag that tells the API whether cropped images should be included in the response
 
-The current implementation has the image conversion and wildlife detection stages wired. It invokes the detector for converted images, while species classification, crop response population, and final detected-image payloads remain downstream implementation work.
+The current implementation has the image conversion, wildlife detection, and detection deduplication stages wired. The API dependency layer assembles the concrete deduplicator and injects it into the pipeline constructor. The pipeline invokes the detector for converted images, passes the detections through that deduplication stage, and maps retained detections into response objects. Species classification, crop response population, and final detected-image payloads remain downstream implementation work.
 
 ## Design Boundary
 
