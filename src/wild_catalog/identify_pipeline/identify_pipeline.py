@@ -53,7 +53,7 @@ class IdentifyPipeline:
         detections = self._wildlife_detector.detect(normalized_image)
         deduplicated_detections = self._detection_deduplicator.deduplicate(detections)
         identified_objects = tuple(
-            self._detection_processing_pipeline.process(detection)
+            self._detection_processing_pipeline.process(normalized_image, detection)
             for detection in deduplicated_detections
         )
 

@@ -8,6 +8,7 @@ from wild_catalog.detection_processing_pipeline.detection_processing_pipeline im
     DetectionProcessingPipeline,
 )
 from wild_catalog.identify_pipeline.identify_pipeline import IdentifyPipeline
+from wild_catalog.image_cropper.image_cropping import ImageCropper
 from wild_catalog.wildlife_detection.detector import WildlifeDetector
 
 
@@ -21,7 +22,9 @@ def get_identify_pipeline() -> IdentifyPipeline:
     conversion = ImageConversionService(settings)
     wildlife_detector = WildlifeDetector()
     detection_deduplicator = DetectionDeduplicator()
-    detection_processing_pipeline = DetectionProcessingPipeline()
+    detection_processing_pipeline = DetectionProcessingPipeline(
+        ImageCropper(settings),
+    )
 
     return IdentifyPipeline(
         settings,

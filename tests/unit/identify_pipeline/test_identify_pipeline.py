@@ -1,13 +1,19 @@
 import asyncio
 from types import SimpleNamespace
 
+from PIL import Image
+
+from wild_catalog.core.settings import Settings
 from wild_catalog.core.types import BoundingBox, Detection, GpsCoordinates
 from wild_catalog.deduplicate_detections.detection_deduplicator import DetectionDeduplicator
 from wild_catalog.detection_processing_pipeline.detection_processing_pipeline import (
     DetectionProcessingPipeline,
 )
+from wild_catalog.identify_pipeline.identified_object import IdentifiedObject
 from wild_catalog.identify_pipeline.identify_command import ExifOverride, IdentifyCommand
 from wild_catalog.identify_pipeline.identify_pipeline import IdentifyPipeline
+from wild_catalog.identify_pipeline.prediction import Prediction
+from wild_catalog.image_cropper.image_cropping import ImageCropper
 
 
 class _Conversion:
@@ -37,7 +43,9 @@ def test_identify_pipeline_reads_stream_and_forwards_exif_override() -> None:
             SimpleNamespace(),
             conversion,
             detection_deduplicator=DetectionDeduplicator(),
-            detection_processing_pipeline=DetectionProcessingPipeline(),
+            detection_processing_pipeline=DetectionProcessingPipeline(
+                ImageCropper(Settings())
+            ),
         )
         command = IdentifyCommand(
             original_filename="image.jpg",
@@ -68,7 +76,7 @@ def test_identify_pipeline_reads_stream_and_forwards_exif_override() -> None:
 
 def test_identify_pipeline_deduplicates_detected_objects() -> None:
     async def run():
-        image = object()
+        image = Image.new("RGB", (100, 120), color=(255, 0, 0))
         low_confidence_duplicate = Detection(
             box=BoundingBox(xmin=0, ymin=0, xmax=10, ymax=10),
             confidence=0.4,
@@ -105,7 +113,9 @@ def test_identify_pipeline_deduplicates_detected_objects() -> None:
             conversion,
             detector,
             detection_deduplicator=DetectionDeduplicator(),
-            detection_processing_pipeline=DetectionProcessingPipeline(),
+            detection_processing_pipeline=DetectionProcessingPipeline(
+                ImageCropper(Settings())
+            ),
         )
 
         async def stream():
@@ -148,7 +158,9 @@ def test_identify_pipeline_uses_injected_detection_deduplicator() -> None:
             _Conversion(),
             detector,
             detection_deduplicator=SimpleNamespace(deduplicate=deduplicate),
-            detection_processing_pipeline=DetectionProcessingPipeline(),
+            detection_processing_pipeline=DetectionProcessingPipeline(
+                ImageCropper(Settings())
+            ),
         )
 
         async def stream():
@@ -168,6 +180,7 @@ def test_identify_pipeline_uses_injected_detection_deduplicator() -> None:
 
 def test_identify_pipeline_uses_injected_detection_processing_pipeline() -> None:
     async def run():
+        image = Image.new("RGB", (100, 120), color=(255, 0, 0))
         discarded_detection = Detection(
             box=BoundingBox(xmin=0, ymin=0, xmax=10, ymax=10),
             confidence=0.4,
@@ -182,14 +195,29 @@ def test_identify_pipeline_uses_injected_detection_processing_pipeline() -> None
         )
         detector = _Detector([discarded_detection, retained_detection])
         processing_calls = []
+        conversion = _Conversion(SimpleNamespace(image=image))
 
-        def process(detection):
-            processing_calls.append(detection)
-            return DetectionProcessingPipeline().process(detection)
+        def process(received_image, detection):
+            processing_calls.append((received_image, detection))
+            return IdentifiedObject(
+                bounding_box=detection.box,
+                bounding_box_with_margin=detection.box,
+                predictions=(
+                    Prediction(
+                        confidence=detection.confidence,
+                        class_id=detection.class_id,
+                        taxonomy=(detection.label,) if detection.label is not None else (),
+                        taxonomy_common_names=(
+                            (detection.label,) if detection.label is not None else ()
+                        ),
+                    ),
+                ),
+                cropped_image=received_image,
+            )
 
         pipeline = IdentifyPipeline(
             SimpleNamespace(),
-            _Conversion(),
+            conversion,
             detector,
             detection_deduplicator=DetectionDeduplicator(),
             detection_processing_pipeline=SimpleNamespace(process=process),
@@ -202,9 +230,9 @@ def test_identify_pipeline_uses_injected_detection_processing_pipeline() -> None
             IdentifyCommand(original_filename="image.jpg"),
             stream(),
         )
-        return result, processing_calls, retained_detection
+        return result, processing_calls, retained_detection, image
 
-    result, processing_calls, retained_detection = asyncio.run(run())
+    result, processing_calls, retained_detection, image = asyncio.run(run())
 
-    assert processing_calls == [retained_detection]
+    assert processing_calls == [(image, retained_detection)]
     assert result.objects[0].bounding_box == retained_detection.box

@@ -1,7 +1,5 @@
 # Detection Processing Pipeline
 
-The detection processing pipeline accepts one deduplicated wildlife detection and returns one identified object structure for the identify response.
+The detection processing pipeline accepts one deduplicated wildlife detection and the normalized image, crops the image around the detection, and returns one identified object structure for the identify response.
 
-This pipeline is intentionally empty for now: it has no internal processing stages wired yet.
-
-Future detection processing stages are out of scope for the current implementation.
+The current implementation wires image cropping into this pipeline and maps the retained detection into the response object. Future detection processing stages remain out of scope.

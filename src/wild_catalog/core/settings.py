@@ -15,6 +15,8 @@ MDV6_APACHE_RTDETR_C_URL = (
 DEFAULTS = {
     "WILD_CATALOG_MAX_UPLOAD_BYTES": 100_000_000,
     "WILD_CATALOG_MAX_IMAGE_PIXELS": 11_648 * 8_742,
+    "WILD_CATALOG_CROP_MARGIN_RATIO": 0.10,
+    "WILD_CATALOG_CROP_MARGIN_MIN_PX": 8,
 }
 
 
@@ -22,12 +24,16 @@ DEFAULTS = {
 class Settings:
     max_upload_bytes: int = DEFAULTS["WILD_CATALOG_MAX_UPLOAD_BYTES"]
     max_image_pixels: int = DEFAULTS["WILD_CATALOG_MAX_IMAGE_PIXELS"]
+    crop_margin_ratio: float = DEFAULTS["WILD_CATALOG_CROP_MARGIN_RATIO"]
+    crop_margin_min_px: int = DEFAULTS["WILD_CATALOG_CROP_MARGIN_MIN_PX"]
 
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
             max_upload_bytes=cls._get_int_value("WILD_CATALOG_MAX_UPLOAD_BYTES"),
             max_image_pixels=cls._get_int_value("WILD_CATALOG_MAX_IMAGE_PIXELS"),
+            crop_margin_ratio=cls._get_float_value("WILD_CATALOG_CROP_MARGIN_RATIO"),
+            crop_margin_min_px=cls._get_int_value("WILD_CATALOG_CROP_MARGIN_MIN_PX"),
         )
 
     @staticmethod
@@ -38,3 +44,7 @@ class Settings:
     @staticmethod
     def _get_int_value(key: str) -> int:
         return int(Settings._get_str_value(key))
+
+    @staticmethod
+    def _get_float_value(key: str) -> float:
+        return float(Settings._get_str_value(key))

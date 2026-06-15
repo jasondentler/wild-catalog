@@ -31,6 +31,7 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
     conversion = SimpleNamespace(marker="conversion")
     wildlife_detector = SimpleNamespace(marker="wildlife_detector")
     detection_deduplicator = SimpleNamespace(marker="detection_deduplicator")
+    image_cropper = SimpleNamespace(marker="image_cropper")
     detection_processing_pipeline = SimpleNamespace(
         marker="detection_processing_pipeline"
     )
@@ -49,8 +50,14 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
         lambda: detection_deduplicator,
     )
     monkeypatch.setattr(
+        "wild_catalog.api.dependencies.ImageCropper",
+        lambda received_settings: image_cropper if received_settings is settings else None,
+    )
+    monkeypatch.setattr(
         "wild_catalog.api.dependencies.DetectionProcessingPipeline",
-        lambda: detection_processing_pipeline,
+        lambda received_cropper: detection_processing_pipeline
+        if received_cropper is image_cropper
+        else None,
     )
 
     pipeline = get_identify_pipeline()
