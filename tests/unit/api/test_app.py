@@ -90,6 +90,16 @@ def test_identify_openapi_includes_upload_content_types() -> None:
         }
     }
     assert identify_operation["responses"]["200"]["description"] == "Successful Response"
+    identify_response_schema = schema["components"]["schemas"]["IdentifyResponse"]
+    assert identify_response_schema["required"] == ["results"]
+    assert identify_response_schema["properties"]["gps_coordinates"]["anyOf"] == [
+        {"$ref": "#/components/schemas/GpsCoordinatesResponse"},
+        {"type": "null"},
+    ]
+    assert schema["components"]["schemas"]["GpsCoordinatesResponse"]["required"] == [
+        "latitude",
+        "longitude",
+    ]
 
 @pytest.mark.parametrize(
     ("content_type", "request_kwargs"),

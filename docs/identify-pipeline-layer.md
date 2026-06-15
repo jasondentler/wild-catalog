@@ -43,6 +43,7 @@ That command carries:
 The pipeline returns an `IdentifyResult` containing:
 
 * zero or more identified objects
+* optional GPS coordinates from EXIF metadata or request override, when known
 * the `return_detected_images` flag that tells the API whether cropped images should be included in the response
 
 The current implementation has the image conversion and wildlife detection stages wired. It invokes the detector for converted images, while species classification, crop response population, and final detected-image payloads remain downstream implementation work.

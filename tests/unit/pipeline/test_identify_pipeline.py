@@ -36,7 +36,8 @@ def test_identify_pipeline_reads_stream_and_forwards_exif_override() -> None:
 
     result, conversion = asyncio.run(run())
 
-    assert result.objects == []
+    assert result.objects == ()
+    assert result.gps_coordinates is None
     assert conversion.calls[0]["original_filename"] == "image.jpg"
     assert conversion.calls[0]["image_file"].getvalue() == b"abcdef"
     assert conversion.calls[0]["gps_coordinates_override"] == GpsCoordinates(

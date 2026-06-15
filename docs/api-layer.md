@@ -194,14 +194,17 @@ Note: the JSON schema above mirrors the example payload shape used in the OpenAP
 
 ### Response Property Details (JSON Payload)
 
-The root response payload is a JSON array of zero or more detected object structures.
+The root response payload is a JSON object.
 
-* `bounding_box` (object): Coordinates for the exact entity boundary in the original image.
+* `gps_coordinates` (object or null): Decimal latitude and longitude used for the request, after applying any EXIF override. This is `null` when coordinates are unknown.
+  * `latitude` (number): Decimal latitude.
+  * `longitude` (number): Decimal longitude.
+* `results` (array): Zero or more detected object structures.
+* `results[].bounding_box` (object): Coordinates for the exact entity boundary in the original image.
   * `xmin`, `ymin`, `xmax`, `ymax`, `height`, `width` (integer): Pixel coordinates and dimensions.
-* `bounding_box_with_margin` (object): Coordinates for the boundary after margin padding is applied.
+* `results[].bounding_box_with_margin` (object): Coordinates for the boundary after margin padding is applied.
   * `xmin`, `ymin`, `xmax`, `ymax`, `height`, `width` (integer): Pixel coordinates and dimensions.
-* `gps_coordinates` (array of two numbers or null): Decimal latitude and longitude used for the request, after applying any EXIF override.
-* `predictions` (array): Classification hypotheses for the bounding box.
+* `results[].predictions` (array): Classification hypotheses for the bounding box.
   * `confidence` (number): Prediction score from `0.0` to `1.0`.
   * `is_present` (boolean): Indicates whether the prediction is considered present.
   * `taxonomy` (array of strings): Scientific taxonomic lineage ordered from highest rank to lowest rank.
@@ -212,73 +215,78 @@ The root response payload is a JSON array of zero or more detected object struct
 ### Response Example: `application/json`
 
 ```json
-[
-  {
-    "bounding_box": {
-      "xmin": 120,
-      "ymin": 340,
-      "xmax": 450,
-      "ymax": 680,
-      "width": 330,
-      "height": 340
-    },
-    "bounding_box_with_margin": {
-      "xmin": 100,
-      "ymin": 320,
-      "xmax": 470,
-      "ymax": 700,
-      "width": 370,
-      "height": 380
-    },
-    "gps_coordinates": [37.7749, -122.4194],
-    "predictions": [
-      {
-        "confidence": 0.982,
-        "is_present": true,
-        "taxonomy": [
-          "Animalia",
-          "Chordata",
-          "Aves",
-          "Passeriformes",
-          "Corvidae",
-          "Cyanocitta",
-          "Cyanocitta cristata"
-        ],
-        "taxonomy_common_names": [
-          "Animals",
-          "Chordates",
-          "Birds",
-          "Perching Birds",
-          "Crows and Jays",
-          "Blue Jays",
-          "Blue Jay"
-        ]
+{
+  "gps_coordinates": {
+    "latitude": 37.7749,
+    "longitude": -122.4194
+  },
+  "results": [
+    {
+      "bounding_box": {
+        "xmin": 120,
+        "ymin": 340,
+        "xmax": 450,
+        "ymax": 680,
+        "width": 330,
+        "height": 340
       },
-      {
-        "confidence": 0.015,
-        "is_present": true,
-        "taxonomy": [
-          "Animalia",
-          "Chordata",
-          "Aves",
-          "Passeriformes",
-          "Mimidae",
-          "Mimus",
-          "Mimus polyglottos"
-        ],
-        "taxonomy_common_names": [
-          "Animals",
-          "Chordates",
-          "Birds",
-          "Perching Birds",
-          "Mockingbirds and Thrashers",
-          "Northern Mockingbirds",
-          "Northern Mockingbird"
-        ]
-      }
-    ]
-  }
-]
+      "bounding_box_with_margin": {
+        "xmin": 100,
+        "ymin": 320,
+        "xmax": 470,
+        "ymax": 700,
+        "width": 370,
+        "height": 380
+      },
+      "predictions": [
+        {
+          "confidence": 0.982,
+          "is_present": true,
+          "taxonomy": [
+            "Animalia",
+            "Chordata",
+            "Aves",
+            "Passeriformes",
+            "Corvidae",
+            "Cyanocitta",
+            "Cyanocitta cristata"
+          ],
+          "taxonomy_common_names": [
+            "Animals",
+            "Chordates",
+            "Birds",
+            "Perching Birds",
+            "Crows and Jays",
+            "Blue Jays",
+            "Blue Jay"
+          ]
+        },
+        {
+          "confidence": 0.015,
+          "is_present": true,
+          "taxonomy": [
+            "Animalia",
+            "Chordata",
+            "Aves",
+            "Passeriformes",
+            "Mimidae",
+            "Mimus",
+            "Mimus polyglottos"
+          ],
+          "taxonomy_common_names": [
+            "Animals",
+            "Chordates",
+            "Birds",
+            "Perching Birds",
+            "Mockingbirds and Thrashers",
+            "Northern Mockingbirds",
+            "Northern Mockingbird"
+          ]
+        }
+      ]
+    }
+  ]
+}
 ```
 
 ---
@@ -292,73 +300,78 @@ Content-Type: multipart/mixed; boundary=detection_boundary
 --detection_boundary
 Content-Type: application/json
 
-[
-  {
-    "bounding_box": {
-      "xmin": 120,
-      "ymin": 340,
-      "xmax": 450,
-      "ymax": 680,
-      "width": 330,
-      "height": 340
-    },
-    "bounding_box_with_margin": {
-      "xmin": 100,
-      "ymin": 320,
-      "xmax": 470,
-      "ymax": 700,
-      "width": 370,
-      "height": 380
-    },
-    "gps_coordinates": [37.7749, -122.4194],
-    "predictions": [
-      {
-        "confidence": 0.982,
-        "is_present": true,
-        "taxonomy": [
-          "Animalia",
-          "Chordata",
-          "Aves",
-          "Passeriformes",
-          "Corvidae",
-          "Cyanocitta",
-          "Cyanocitta cristata"
-        ],
-        "taxonomy_common_names": [
-          "Animals",
-          "Chordates",
-          "Birds",
-          "Perching Birds",
-          "Crows and Jays",
-          "Blue Jays",
-          "Blue Jay"
-        ]
+{
+  "gps_coordinates": {
+    "latitude": 37.7749,
+    "longitude": -122.4194
+  },
+  "results": [
+    {
+      "bounding_box": {
+        "xmin": 120,
+        "ymin": 340,
+        "xmax": 450,
+        "ymax": 680,
+        "width": 330,
+        "height": 340
       },
-      {
-        "confidence": 0.015,
-        "is_present": true,
-        "taxonomy": [
-          "Animalia",
-          "Chordata",
-          "Aves",
-          "Passeriformes",
-          "Mimidae",
-          "Mimus",
-          "Mimus polyglottos"
-        ],
-        "taxonomy_common_names": [
-          "Animals",
-          "Chordates",
-          "Birds",
-          "Perching Birds",
-          "Mockingbirds and Thrashers",
-          "Northern Mockingbirds",
-          "Northern Mockingbird"
-        ]
-      }
-    ]
-  }
-]
+      "bounding_box_with_margin": {
+        "xmin": 100,
+        "ymin": 320,
+        "xmax": 470,
+        "ymax": 700,
+        "width": 370,
+        "height": 380
+      },
+      "predictions": [
+        {
+          "confidence": 0.982,
+          "is_present": true,
+          "taxonomy": [
+            "Animalia",
+            "Chordata",
+            "Aves",
+            "Passeriformes",
+            "Corvidae",
+            "Cyanocitta",
+            "Cyanocitta cristata"
+          ],
+          "taxonomy_common_names": [
+            "Animals",
+            "Chordates",
+            "Birds",
+            "Perching Birds",
+            "Crows and Jays",
+            "Blue Jays",
+            "Blue Jay"
+          ]
+        },
+        {
+          "confidence": 0.015,
+          "is_present": true,
+          "taxonomy": [
+            "Animalia",
+            "Chordata",
+            "Aves",
+            "Passeriformes",
+            "Mimidae",
+            "Mimus",
+            "Mimus polyglottos"
+          ],
+          "taxonomy_common_names": [
+            "Animals",
+            "Chordates",
+            "Birds",
+            "Perching Birds",
+            "Mockingbirds and Thrashers",
+            "Northern Mockingbirds",
+            "Northern Mockingbird"
+          ]
+        }
+      ]
+    }
+  ]
+}
 --detection_boundary
 Content-Type: image/jpeg
 Content-Disposition: attachment; filename="detection_1.jpg"

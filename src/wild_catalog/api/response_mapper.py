@@ -12,7 +12,9 @@ from PIL import Image
 from wild_catalog.api.content_negotiation import ResponseFormat, ResponseSelection
 from wild_catalog.api.response_models import (
     BoundingBoxResponse,
+    GpsCoordinatesResponse,
     IdentifiedObjectResponse,
+    IdentifyResponse,
     PredictionResponse,
 )
 from wild_catalog.core.types import BoundingBox, GpsCoordinates
@@ -33,7 +35,7 @@ def map_response(
     if response_selection.response_format == ResponseFormat.JSON:
         response = JSONResponse(
             status_code=200,
-            content=[_map_identified_object(obj).model_dump() for obj in result.objects],
+            content=_map_identify_result(result).model_dump(),
         )
         return response
 
@@ -47,7 +49,7 @@ def map_multipart_response(
     boundary = f"wildcatalog-{uuid.uuid4().hex}"
 
     async def stream() -> AsyncIterator[bytes]:
-        payload = [_map_identified_object(obj).model_dump() for obj in result.objects]
+        payload = _map_identify_result(result).model_dump()
         yield _multipart_json_part(boundary, payload)
 
         if response_selection.include_images:
@@ -65,11 +67,17 @@ def map_multipart_response(
     return response
 
 
+def _map_identify_result(result: IdentifyResult) -> IdentifyResponse:
+    return IdentifyResponse(
+        gps_coordinates=_map_gps_coordinates(result.gps_coordinates),
+        results=[_map_identified_object(obj) for obj in result.objects],
+    )
+
+
 def _map_identified_object(obj: IdentifiedObject) -> IdentifiedObjectResponse:
     return IdentifiedObjectResponse(
         bounding_box=_map_bounding_box(obj.bounding_box),
         bounding_box_with_margin=_map_bounding_box(obj.bounding_box_with_margin),
-        gps_coordinates=_map_gps_coordinates(obj.gps_coordinates),
         predictions=[_map_prediction(prediction) for prediction in obj.predictions],
     )
 
@@ -87,11 +95,14 @@ def _map_bounding_box(box: BoundingBox) -> BoundingBoxResponse:
 
 def _map_gps_coordinates(
     gps_coordinates: GpsCoordinates | None,
-) -> tuple[float, float] | None:
+) -> GpsCoordinatesResponse | None:
     if gps_coordinates is None:
         return None
 
-    return (gps_coordinates.latitude, gps_coordinates.longitude)
+    return GpsCoordinatesResponse(
+        latitude=gps_coordinates.latitude,
+        longitude=gps_coordinates.longitude,
+    )
 
 
 def _map_prediction(prediction: Prediction) -> PredictionResponse:

@@ -2,10 +2,12 @@ from collections.abc import AsyncGenerator
 from io import BytesIO
 
 from wild_catalog.conversion.service import ImageConversionService
+from wild_catalog.core.detection import Detection
 from wild_catalog.core.settings import Settings
 from wild_catalog.pipeline.identify_command import IdentifyCommand
-from wild_catalog.pipeline.identify_result import IdentifyResult
+from wild_catalog.pipeline.identify_result import IdentifiedObject, IdentifyResult
 from wild_catalog.pipeline.noop_wildlife_detector import NoopWildlifeDetector
+from wild_catalog.pipeline.prediction import Prediction
 from wild_catalog.wildlife_detection.detector import Detector
 
 
@@ -33,19 +35,38 @@ class IdentifyPipeline:
             image_file=BytesIO(bytes(image_bytes)),
             original_filename=command.original_filename,
             gps_coordinates_override=(
-                command.exif_override.gps_coordinates
-                if command.exif_override is not None
-                else None
+                command.exif_override.gps_coordinates if command.exif_override is not None else None
             ),
             captured_at_override=(
-                command.exif_override.captured_at
-                if command.exif_override is not None
-                else None
+                command.exif_override.captured_at if command.exif_override is not None else None
             ),
         )
 
         normalized_image = getattr(converted, "image", converted)
         detections = self._wildlife_detector.detect(normalized_image)
 
+        identified_objects = tuple(self._map(detection) for detection in detections)
+
         _ = detections
-        return IdentifyResult([], False)
+        return IdentifyResult(
+            objects=identified_objects,
+            gps_coordinates=getattr(converted, "gps_coordinates", None),
+            return_detected_images=False,
+        )
+
+    def _map(self, detection: Detection) -> IdentifiedObject:
+
+        prediction = Prediction(
+            confidence=detection.confidence,
+            is_present=False,
+            taxonomy=[detection.label],
+            taxonomy_common_names=[detection.label],
+            class_id=detection.class_id
+        )
+
+        return IdentifiedObject(
+            detection.box,
+            detection.box,
+            [prediction],
+            None,
+        )

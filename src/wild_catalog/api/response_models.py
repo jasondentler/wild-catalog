@@ -1,24 +1,13 @@
-from pydantic import BaseModel
+from wild_catalog.api.bounding_box_response import BoundingBoxResponse
+from wild_catalog.api.gps_coordinates_response import GpsCoordinatesResponse
+from wild_catalog.api.identified_object_response import IdentifiedObjectResponse
+from wild_catalog.api.identify_response import IdentifyResponse
+from wild_catalog.api.prediction_response import PredictionResponse
 
-
-class BoundingBoxResponse(BaseModel):
-    xmin: int
-    ymin: int
-    xmax: int
-    ymax: int
-    width: int
-    height: int
-
-
-class PredictionResponse(BaseModel):
-    confidence: float
-    is_present: bool
-    taxonomy: list[str]
-    taxonomy_common_names: list[str]
-
-
-class IdentifiedObjectResponse(BaseModel):
-    bounding_box: BoundingBoxResponse
-    bounding_box_with_margin: BoundingBoxResponse
-    gps_coordinates: tuple[float, float] | None
-    predictions: list[PredictionResponse]
+__all__ = [
+    "BoundingBoxResponse",
+    "GpsCoordinatesResponse",
+    "IdentifiedObjectResponse",
+    "IdentifyResponse",
+    "PredictionResponse",
+]

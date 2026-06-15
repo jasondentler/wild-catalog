@@ -27,11 +27,11 @@ def test_map_response_returns_204_for_none() -> None:
 
 def test_map_response_serializes_identify_result_objects() -> None:
     result = IdentifyResult(
+        gps_coordinates=GpsCoordinates(latitude=45.1234, longitude=-93.1234),
         objects=(
             IdentifiedObject(
                 bounding_box=BoundingBox(xmin=10, ymin=20, xmax=110, ymax=220),
                 bounding_box_with_margin=BoundingBox(xmin=0, ymin=5, xmax=120, ymax=235),
-                gps_coordinates=GpsCoordinates(latitude=45.1234, longitude=-93.1234),
                 predictions=(
                     Prediction(
                         confidence=0.92,
@@ -67,49 +67,54 @@ def test_map_response_serializes_identify_result_objects() -> None:
     )
 
     assert response.status_code == 200
-    assert json.loads(response.body) == [
-        {
-            "bounding_box": {
-                "xmin": 10,
-                "ymin": 20,
-                "xmax": 110,
-                "ymax": 220,
-                "width": 100,
-                "height": 200,
-            },
-            "bounding_box_with_margin": {
-                "xmin": 0,
-                "ymin": 5,
-                "xmax": 120,
-                "ymax": 235,
-                "width": 120,
-                "height": 230,
-            },
-            "gps_coordinates": [45.1234, -93.1234],
-            "predictions": [
-                {
-                    "confidence": 0.92,
-                    "is_present": True,
-                    "taxonomy": [
-                        "Animalia",
-                        "Chordata",
-                        "Aves",
-                        "Passeriformes",
-                        "Corvidae",
-                        "Cyanocitta cristata",
-                    ],
-                    "taxonomy_common_names": [
-                        "Animals",
-                        "Chordates",
-                        "Birds",
-                        "Perching Birds",
-                        "Crows and Jays",
-                        "Blue Jay",
-                    ],
-                }
-            ],
-        }
-    ]
+    assert json.loads(response.body) == {
+        "gps_coordinates": {
+            "latitude": 45.1234,
+            "longitude": -93.1234,
+        },
+        "results": [
+            {
+                "bounding_box": {
+                    "xmin": 10,
+                    "ymin": 20,
+                    "xmax": 110,
+                    "ymax": 220,
+                    "width": 100,
+                    "height": 200,
+                },
+                "bounding_box_with_margin": {
+                    "xmin": 0,
+                    "ymin": 5,
+                    "xmax": 120,
+                    "ymax": 235,
+                    "width": 120,
+                    "height": 230,
+                },
+                "predictions": [
+                    {
+                        "confidence": 0.92,
+                        "is_present": True,
+                        "taxonomy": [
+                            "Animalia",
+                            "Chordata",
+                            "Aves",
+                            "Passeriformes",
+                            "Corvidae",
+                            "Cyanocitta cristata",
+                        ],
+                        "taxonomy_common_names": [
+                            "Animals",
+                            "Chordates",
+                            "Birds",
+                            "Perching Birds",
+                            "Crows and Jays",
+                            "Blue Jay",
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
 
 
 def test_map_response_uses_result_flag_for_multipart_negotiation() -> None:
@@ -129,13 +134,12 @@ def test_map_response_uses_result_flag_for_multipart_negotiation() -> None:
     assert response.headers["content-type"].startswith("multipart/mixed; boundary=")
 
 
-def test_map_response_maps_none_gps_coordinates() -> None:
+def test_map_response_maps_none_top_level_gps_coordinates() -> None:
     result = IdentifyResult(
         objects=(
             IdentifiedObject(
                 bounding_box=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
                 bounding_box_with_margin=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
-                gps_coordinates=None,
                 predictions=(),
             ),
         )
@@ -150,6 +154,7 @@ def test_map_response_maps_none_gps_coordinates() -> None:
     )
 
     assert b'"gps_coordinates":null' in response.body
+    assert b'"results":[{"bounding_box"' in response.body
 
 
 def test_map_multipart_response_includes_images() -> None:
@@ -158,7 +163,6 @@ def test_map_multipart_response_includes_images() -> None:
             IdentifiedObject(
                 bounding_box=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
                 bounding_box_with_margin=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
-                gps_coordinates=None,
                 predictions=(),
                 cropped_image=Image.new("RGB", (1, 1), color=(255, 0, 0)),
             ),
@@ -189,7 +193,6 @@ def test_map_multipart_response_skips_missing_images() -> None:
             IdentifiedObject(
                 bounding_box=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
                 bounding_box_with_margin=BoundingBox(xmin=1, ymin=2, xmax=3, ymax=4),
-                gps_coordinates=None,
                 predictions=(),
             ),
         )
