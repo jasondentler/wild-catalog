@@ -6,7 +6,7 @@ from wild_catalog.core.errors import (
     ContentLengthHeaderIsNotNumberError,
     InvalidContentLanguageError,
 )
-from wild_catalog.pipeline.identify_command import IdentifyCommand
+from wild_catalog.identify_pipeline.identify_command import IdentifyCommand
 
 
 async def create_request_body_command(

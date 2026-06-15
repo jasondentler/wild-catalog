@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
 from wild_catalog.core.types import GpsCoordinates
-from wild_catalog.pipeline.identified_object import IdentifiedObject
-from wild_catalog.pipeline.prediction import Prediction
+from wild_catalog.identify_pipeline.identified_object import IdentifiedObject
+from wild_catalog.identify_pipeline.prediction import Prediction
 
 
 @dataclass(frozen=True, slots=True)

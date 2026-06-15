@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from wild_catalog.api.app import app
 from wild_catalog.api.dependencies import get_identify_pipeline
 from wild_catalog.core.settings import Settings
-from wild_catalog.pipeline.identify_result import IdentifyResult
+from wild_catalog.identify_pipeline.identify_result import IdentifyResult
 
 
 class DummyPipeline:

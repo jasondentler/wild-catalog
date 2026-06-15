@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from wild_catalog.api.app import app
 from wild_catalog.api.dependencies import get_identify_pipeline
 from wild_catalog.api.openapi_schemas import IDENTIFY_REQUEST_OPENAPI_EXTRA
-from wild_catalog.pipeline.identify_result import IdentifyResult
+from wild_catalog.identify_pipeline.identify_result import IdentifyResult
 
 SAMPLE_IMAGES_DIR = Path("sample-images")
 JPEG_IMAGE_1 = SAMPLE_IMAGES_DIR / "20260402-IMG_7906.jpg"

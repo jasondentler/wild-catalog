@@ -31,6 +31,9 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
     conversion = SimpleNamespace(marker="conversion")
     wildlife_detector = SimpleNamespace(marker="wildlife_detector")
     detection_deduplicator = SimpleNamespace(marker="detection_deduplicator")
+    detection_processing_pipeline = SimpleNamespace(
+        marker="detection_processing_pipeline"
+    )
 
     monkeypatch.setattr("wild_catalog.api.dependencies.get_settings", lambda: settings)
     monkeypatch.setattr(
@@ -45,6 +48,10 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
         "wild_catalog.api.dependencies.DetectionDeduplicator",
         lambda: detection_deduplicator,
     )
+    monkeypatch.setattr(
+        "wild_catalog.api.dependencies.DetectionProcessingPipeline",
+        lambda: detection_processing_pipeline,
+    )
 
     pipeline = get_identify_pipeline()
 
@@ -52,3 +59,4 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
     assert pipeline._conversion is conversion
     assert pipeline._wildlife_detector is wildlife_detector
     assert pipeline._detection_deduplicator is detection_deduplicator
+    assert pipeline._detection_processing_pipeline is detection_processing_pipeline

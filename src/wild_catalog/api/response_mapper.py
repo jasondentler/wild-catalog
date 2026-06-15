@@ -18,7 +18,7 @@ from wild_catalog.api.response_models import (
     PredictionResponse,
 )
 from wild_catalog.core.types import BoundingBox, GpsCoordinates
-from wild_catalog.pipeline.identify_result import (
+from wild_catalog.identify_pipeline.identify_result import (
     IdentifiedObject,
     IdentifyResult,
     Prediction,

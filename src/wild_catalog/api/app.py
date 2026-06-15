@@ -20,8 +20,8 @@ from wild_catalog.core.errors import (
     PayloadTooLargeError,
 )
 from wild_catalog.core.settings import Settings
-from wild_catalog.pipeline.identify_command import IdentifyCommand
-from wild_catalog.pipeline.identify_pipeline import IdentifyPipeline
+from wild_catalog.identify_pipeline.identify_command import IdentifyCommand
+from wild_catalog.identify_pipeline.identify_pipeline import IdentifyPipeline
 
 logger = logging.getLogger("uvicorn.error")
 

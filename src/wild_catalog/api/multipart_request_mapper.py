@@ -11,7 +11,7 @@ from wild_catalog.core.errors import (
     MalformedJsonPayloadError,
 )
 from wild_catalog.core.types import GpsCoordinates
-from wild_catalog.pipeline.identify_command import ExifOverride, IdentifyCommand
+from wild_catalog.identify_pipeline.identify_command import ExifOverride, IdentifyCommand
 
 
 async def create_multipart_form_command(

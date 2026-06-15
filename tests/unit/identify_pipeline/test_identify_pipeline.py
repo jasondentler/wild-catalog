@@ -3,8 +3,11 @@ from types import SimpleNamespace
 
 from wild_catalog.core.types import BoundingBox, Detection, GpsCoordinates
 from wild_catalog.deduplicate_detections.detection_deduplicator import DetectionDeduplicator
-from wild_catalog.pipeline.identify_command import ExifOverride, IdentifyCommand
-from wild_catalog.pipeline.identify_pipeline import IdentifyPipeline
+from wild_catalog.detection_processing_pipeline.detection_processing_pipeline import (
+    DetectionProcessingPipeline,
+)
+from wild_catalog.identify_pipeline.identify_command import ExifOverride, IdentifyCommand
+from wild_catalog.identify_pipeline.identify_pipeline import IdentifyPipeline
 
 
 class _Conversion:
@@ -34,6 +37,7 @@ def test_identify_pipeline_reads_stream_and_forwards_exif_override() -> None:
             SimpleNamespace(),
             conversion,
             detection_deduplicator=DetectionDeduplicator(),
+            detection_processing_pipeline=DetectionProcessingPipeline(),
         )
         command = IdentifyCommand(
             original_filename="image.jpg",
@@ -101,6 +105,7 @@ def test_identify_pipeline_deduplicates_detected_objects() -> None:
             conversion,
             detector,
             detection_deduplicator=DetectionDeduplicator(),
+            detection_processing_pipeline=DetectionProcessingPipeline(),
         )
 
         async def stream():
@@ -143,6 +148,7 @@ def test_identify_pipeline_uses_injected_detection_deduplicator() -> None:
             _Conversion(),
             detector,
             detection_deduplicator=SimpleNamespace(deduplicate=deduplicate),
+            detection_processing_pipeline=DetectionProcessingPipeline(),
         )
 
         async def stream():
@@ -158,3 +164,47 @@ def test_identify_pipeline_uses_injected_detection_deduplicator() -> None:
 
     assert deduplicator_calls == [detector.detections]
     assert result.objects == ()
+
+
+def test_identify_pipeline_uses_injected_detection_processing_pipeline() -> None:
+    async def run():
+        discarded_detection = Detection(
+            box=BoundingBox(xmin=0, ymin=0, xmax=10, ymax=10),
+            confidence=0.4,
+            class_id=0,
+            label="animal",
+        )
+        retained_detection = Detection(
+            box=BoundingBox(xmin=1, ymin=1, xmax=11, ymax=11),
+            confidence=0.9,
+            class_id=0,
+            label="animal",
+        )
+        detector = _Detector([discarded_detection, retained_detection])
+        processing_calls = []
+
+        def process(detection):
+            processing_calls.append(detection)
+            return DetectionProcessingPipeline().process(detection)
+
+        pipeline = IdentifyPipeline(
+            SimpleNamespace(),
+            _Conversion(),
+            detector,
+            detection_deduplicator=DetectionDeduplicator(),
+            detection_processing_pipeline=SimpleNamespace(process=process),
+        )
+
+        async def stream():
+            yield b"abc"
+
+        result = await pipeline.execute(
+            IdentifyCommand(original_filename="image.jpg"),
+            stream(),
+        )
+        return result, processing_calls, retained_detection
+
+    result, processing_calls, retained_detection = asyncio.run(run())
+
+    assert processing_calls == [retained_detection]
+    assert result.objects[0].bounding_box == retained_detection.box

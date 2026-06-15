@@ -6,7 +6,7 @@ from PIL import Image
 from wild_catalog.api.content_negotiation import ResponseFormat, ResponseSelection
 from wild_catalog.api.response_mapper import map_multipart_response, map_response
 from wild_catalog.core.types import BoundingBox, GpsCoordinates
-from wild_catalog.pipeline.identify_result import (
+from wild_catalog.identify_pipeline.identify_result import (
     IdentifiedObject,
     IdentifyResult,
     Prediction,
