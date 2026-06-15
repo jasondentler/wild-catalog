@@ -14,6 +14,7 @@ authors = [
     { name = "Jason Dentler" },
 ]
 dependencies = [
+    "birder==0.5.6",
     "exifread @ git+https://github.com/jasondentler/exif-py.git@fix-license-detection",
     "fastapi>=0.115,<1.0",
     "pillow>=12.0,<13.0",

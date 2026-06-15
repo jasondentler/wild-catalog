@@ -401,6 +401,10 @@ def test_identify_rejects_heic_upload(monkeypatch: pytest.MonkeyPatch) -> None:
         "wild_catalog.api.dependencies.WildlifeDetector",
         lambda: object(),
     )
+    monkeypatch.setattr(
+        "wild_catalog.api.dependencies.SpeciesClassifier",
+        lambda *args, **kwargs: object(),
+    )
 
     response = client.post(
         "/identify",

@@ -17,6 +17,7 @@ DEFAULTS = {
     "WILD_CATALOG_MAX_IMAGE_PIXELS": 11_648 * 8_742,
     "WILD_CATALOG_CROP_MARGIN_RATIO": 0.10,
     "WILD_CATALOG_CROP_MARGIN_MIN_PX": 8,
+    "WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K": 20,
 }
 
 
@@ -26,6 +27,7 @@ class Settings:
     max_image_pixels: int = DEFAULTS["WILD_CATALOG_MAX_IMAGE_PIXELS"]
     crop_margin_ratio: float = DEFAULTS["WILD_CATALOG_CROP_MARGIN_RATIO"]
     crop_margin_min_px: int = DEFAULTS["WILD_CATALOG_CROP_MARGIN_MIN_PX"]
+    species_classifier_top_k: int = DEFAULTS["WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K"]
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -34,6 +36,9 @@ class Settings:
             max_image_pixels=cls._get_int_value("WILD_CATALOG_MAX_IMAGE_PIXELS"),
             crop_margin_ratio=cls._get_float_value("WILD_CATALOG_CROP_MARGIN_RATIO"),
             crop_margin_min_px=cls._get_int_value("WILD_CATALOG_CROP_MARGIN_MIN_PX"),
+            species_classifier_top_k=cls._get_int_value(
+                "WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K"
+            ),
         )
 
     @staticmethod

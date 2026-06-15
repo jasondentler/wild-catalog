@@ -36,6 +36,20 @@ class _Detector:
         return self.detections
 
 
+class _Classifier:
+    def classify(self, image):
+        _ = image
+        return [
+            Prediction(
+                confidence=0.77,
+                is_present=True,
+                taxonomy=("mallard",),
+                taxonomy_common_names=("mallard",),
+                class_id=17,
+            )
+        ]
+
+
 def test_identify_pipeline_reads_stream_and_forwards_exif_override() -> None:
     async def run():
         conversion = _Conversion()
@@ -44,7 +58,8 @@ def test_identify_pipeline_reads_stream_and_forwards_exif_override() -> None:
             conversion,
             detection_deduplicator=DetectionDeduplicator(),
             detection_processing_pipeline=DetectionProcessingPipeline(
-                ImageCropper(Settings())
+                ImageCropper(Settings()),
+                _Classifier(),
             ),
         )
         command = IdentifyCommand(
@@ -114,7 +129,8 @@ def test_identify_pipeline_deduplicates_detected_objects() -> None:
             detector,
             detection_deduplicator=DetectionDeduplicator(),
             detection_processing_pipeline=DetectionProcessingPipeline(
-                ImageCropper(Settings())
+                ImageCropper(Settings()),
+                _Classifier(),
             ),
         )
 
@@ -135,7 +151,10 @@ def test_identify_pipeline_deduplicates_detected_objects() -> None:
         BoundingBox(xmin=1, ymin=1, xmax=11, ymax=11),
         BoundingBox(xmin=50, ymin=50, xmax=60, ymax=60),
     ]
-    assert [obj.predictions[0].confidence for obj in result.objects] == [0.9, 0.8]
+    assert [obj.predictions[0].taxonomy for obj in result.objects] == [
+        ("mallard",),
+        ("mallard",),
+    ]
 
 
 def test_identify_pipeline_uses_injected_detection_deduplicator() -> None:
@@ -159,7 +178,8 @@ def test_identify_pipeline_uses_injected_detection_deduplicator() -> None:
             detector,
             detection_deduplicator=SimpleNamespace(deduplicate=deduplicate),
             detection_processing_pipeline=DetectionProcessingPipeline(
-                ImageCropper(Settings())
+                ImageCropper(Settings()),
+                _Classifier(),
             ),
         )
 

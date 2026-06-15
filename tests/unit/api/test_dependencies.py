@@ -29,9 +29,10 @@ def test_get_settings_is_cached(monkeypatch) -> None:
 def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
     settings = SimpleNamespace(marker="settings")
     conversion = SimpleNamespace(marker="conversion")
-    wildlife_detector = SimpleNamespace(marker="wildlife_detector")
+    wildlife_detector = SimpleNamespace(marker="wildlife_detector", device="mps")
     detection_deduplicator = SimpleNamespace(marker="detection_deduplicator")
     image_cropper = SimpleNamespace(marker="image_cropper")
+    species_classifier = SimpleNamespace(marker="species_classifier")
     detection_processing_pipeline = SimpleNamespace(
         marker="detection_processing_pipeline"
     )
@@ -54,9 +55,15 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
         lambda received_settings: image_cropper if received_settings is settings else None,
     )
     monkeypatch.setattr(
+        "wild_catalog.api.dependencies.SpeciesClassifier",
+        lambda received_settings, *, device: species_classifier
+        if received_settings is settings and device == "mps"
+        else None,
+    )
+    monkeypatch.setattr(
         "wild_catalog.api.dependencies.DetectionProcessingPipeline",
-        lambda received_cropper: detection_processing_pipeline
-        if received_cropper is image_cropper
+        lambda received_cropper, received_classifier: detection_processing_pipeline
+        if received_cropper is image_cropper and received_classifier is species_classifier
         else None,
     )
 

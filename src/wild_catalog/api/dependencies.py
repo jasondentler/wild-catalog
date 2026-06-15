@@ -9,6 +9,7 @@ from wild_catalog.detection_processing_pipeline.detection_processing_pipeline im
 )
 from wild_catalog.identify_pipeline.identify_pipeline import IdentifyPipeline
 from wild_catalog.image_cropper.image_cropping import ImageCropper
+from wild_catalog.species_classifier.classifier import SpeciesClassifier
 from wild_catalog.wildlife_detection.detector import WildlifeDetector
 
 
@@ -22,8 +23,13 @@ def get_identify_pipeline() -> IdentifyPipeline:
     conversion = ImageConversionService(settings)
     wildlife_detector = WildlifeDetector()
     detection_deduplicator = DetectionDeduplicator()
+    species_classifier = SpeciesClassifier(
+        settings,
+        device=getattr(wildlife_detector, "device", None),
+    )
     detection_processing_pipeline = DetectionProcessingPipeline(
         ImageCropper(settings),
+        species_classifier,
     )
 
     return IdentifyPipeline(
