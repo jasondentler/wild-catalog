@@ -83,7 +83,11 @@ def test_import_geopackage_migrates_rows_and_trims_geopackage_geometry_header(tm
         FROM range_geometries
         """
     ).fetchone()
+    imported_taxa = target_connection.execute(
+        "SELECT taxon_id, name FROM range_taxa"
+    ).fetchall()
     assert imported == (12345, -97.2, 32.6, -96.8, 33.1, b"wkb-payload")
+    assert imported_taxa == [(12345, "Agelaius phoeniceus")]
     target_connection.close()
 
 
@@ -108,7 +112,11 @@ def test_import_geopackage_supports_split_archive_table_name_with_suffix(tmp_pat
         FROM range_geometries
         """
     ).fetchone()
+    imported_taxa = target_connection.execute(
+        "SELECT taxon_id, name FROM range_taxa"
+    ).fetchall()
     assert imported == (67890, -100.0, 30.0, -99.0, 31.0, b"bird-wkb-payload")
+    assert imported_taxa == [(67890, "Agelaius phoeniceus")]
     target_connection.close()
 
 
@@ -138,10 +146,54 @@ def test_import_geopackages_creates_store_rebuilds_rtree_and_stores_metadata(tmp
             "SELECT id, min_lon, max_lon, min_lat, max_lat FROM range_geometries_rtree"
         ).fetchall()
         metadata_rows = dict(connection.execute("SELECT key, value FROM range_store_metadata"))
+        taxon_rows = connection.execute("SELECT taxon_id, name FROM range_taxa").fetchall()
 
     assert range_rows == [(1, 12345, -97.2, -96.8, 32.6, 33.1)]
     assert rtree_rows == [pytest.approx((1, -97.2, -96.8, 32.6, 33.1))]
     assert metadata_rows == {"ranges": "1", "version": "2.31"}
+    assert taxon_rows == [(12345, "Agelaius phoeniceus")]
+
+
+def test_import_inaturalist_open_range_data_backfills_taxa_for_existing_database(
+    tmp_path,
+) -> None:
+    target_database_path = tmp_path / "range-store.sqlite"
+    download_dir = tmp_path / "downloads"
+    download_dir.mkdir()
+    geopackage_path = download_dir / "iNaturalist_geomodel_Amphibia.gpkg"
+    _create_fake_geopackage(
+        geopackage_path,
+        table_name="iNaturalist_geomodel_Amphibia",
+        taxon_id="12345",
+        wkb=b"wkb-payload",
+        bounds=(-97.2, -96.8, 32.6, 33.1),
+    )
+
+    with closing(sqlite3.connect(target_database_path)) as connection:
+        with connection:
+            connection.execute(
+                """
+                CREATE TABLE range_geometries (
+                    id INTEGER PRIMARY KEY,
+                    taxon_id INTEGER NOT NULL,
+                    min_lon REAL NOT NULL,
+                    min_lat REAL NOT NULL,
+                    max_lon REAL NOT NULL,
+                    max_lat REAL NOT NULL,
+                    geometry_wkb BLOB NOT NULL
+                )
+                """
+            )
+
+    rows_imported = import_inaturalist_open_range_data_if_missing(
+        target_database_path,
+        download_dir,
+    )
+
+    assert rows_imported == 0
+    with closing(sqlite3.connect(target_database_path)) as connection:
+        taxon_rows = connection.execute("SELECT taxon_id, name FROM range_taxa").fetchall()
+    assert taxon_rows == [(12345, "Agelaius phoeniceus")]
 
 
 def test_import_inaturalist_open_range_data_skips_when_database_exists(
@@ -274,6 +326,7 @@ def test_create_range_store_schema_creates_expected_tables() -> None:
     assert "range_geometries" in tables
     assert "range_geometries_rtree" in tables
     assert "range_store_metadata" in tables
+    assert "range_taxa" in tables
     connection.close()
 
 
@@ -293,6 +346,7 @@ def _create_fake_geopackage(
                 CREATE TABLE "{table_name}" (
                     fid INTEGER PRIMARY KEY,
                     taxon_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
                     geom BLOB NOT NULL
                 )
                 """
@@ -309,8 +363,9 @@ def _create_fake_geopackage(
                 """
             )
             connection.execute(
-                f'INSERT INTO "{table_name}" (fid, taxon_id, geom) VALUES (?, ?, ?)',
-                (1, taxon_id, geometry_with_header),
+                f'INSERT INTO "{table_name}" (fid, taxon_id, name, geom) '
+                "VALUES (?, ?, ?, ?)",
+                (1, taxon_id, "Agelaius phoeniceus", geometry_with_header),
             )
             connection.execute(
                 f'INSERT INTO "rtree_{table_name}_geom" (id, minx, maxx, miny, maxy) '

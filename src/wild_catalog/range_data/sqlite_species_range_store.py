@@ -1,5 +1,5 @@
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from wild_catalog.range_data.species_range_store import SpeciesRangeStore
@@ -65,6 +65,34 @@ class SQLiteSpeciesRangeStore(SpeciesRangeStore):
         ).fetchall()
 
         return [(int(row[0]), bytes(row[1])) for row in rows]
+
+    def get_taxon_ids_by_names(
+        self,
+        scientific_names: Iterable[str],
+    ) -> Mapping[str, int]:
+        requested_names = sorted({name for name in scientific_names if name})
+
+        if not requested_names:
+            return {}
+
+        connection = self._get_connection()
+        placeholders = ", ".join("?" for _ in requested_names)
+
+        try:
+            rows = connection.execute(
+                f"""
+                SELECT name, taxon_id
+                FROM range_taxa
+                WHERE name IN ({placeholders})
+                """,
+                requested_names,
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            if "no such table: range_taxa" not in str(exc):
+                raise
+            return {}
+
+        return {str(row[0]): int(row[1]) for row in rows}
 
     def close(self) -> None:
         if self._connection is not None:

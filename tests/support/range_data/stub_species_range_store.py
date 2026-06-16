@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from collections.abc import Mapping
 
 from wild_catalog.range_data.species_range_store import SpeciesRangeStore
 
@@ -8,8 +9,10 @@ class StubSpeciesRangeStore(SpeciesRangeStore):
         self,
         *,
         candidate_geometries: Iterable[tuple[int, bytes]] | None = None,
+        taxon_id_by_name: Mapping[str, int] | None = None,
     ) -> None:
         self._candidate_geometries = list(candidate_geometries or [])
+        self._taxon_id_by_name = dict(taxon_id_by_name or {})
 
     def get_candidate_geometries_for_point(
         self,
@@ -32,3 +35,14 @@ class StubSpeciesRangeStore(SpeciesRangeStore):
             for taxon_id, geometry_wkb in self._candidate_geometries
             if taxon_id in requested_taxon_ids
         ]
+
+    def get_taxon_ids_by_names(
+        self,
+        scientific_names: Iterable[str],
+    ) -> Mapping[str, int]:
+        requested_names = set(scientific_names)
+        return {
+            name: taxon_id
+            for name, taxon_id in self._taxon_id_by_name.items()
+            if name in requested_names
+        }

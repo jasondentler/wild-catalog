@@ -152,6 +152,69 @@ def test_birder_species_classifier_returns_top_k_predictions() -> None:
     assert all(prediction.is_present for prediction in predictions)
 
 
+def test_birder_species_classifier_returns_raw_probabilities_and_class_index() -> None:
+    model = SimpleNamespace(marker="model")
+    model_info = SimpleNamespace(
+        class_to_idx={
+            "03867_Animalia_Chordata_Aves_Passeriformes_Icteridae_Agelaius_phoeniceus": 0,
+            "03868_Animalia_Chordata_Aves_Passeriformes_Icteridae_Agelaius_tricolor": 1,
+        }
+    )
+    classifier = BirderSpeciesClassifier(
+        Settings(species_classifier_top_k=1),
+        device="cpu",
+        model=model,
+        model_info=model_info,
+        transform=SimpleNamespace(),
+        infer_image=lambda *args, **kwargs: (np.array([0.25, 0.75]), None),
+        taxon_id_by_class_id={0: 145236},
+    )
+
+    raw_output = classifier.classify_raw(Image.new("RGB", (8, 8)))
+
+    assert raw_output.class_index.id == classifier.model_name
+    assert raw_output.probabilities.tolist() == [[0.25, 0.75]]
+    assert raw_output.class_index.taxon_id_by_class_id == {
+        0: 145236,
+        1: 3868,
+    }
+    assert raw_output.class_index.taxonomy_path_by_class_id[0] == (
+        "03867_Animalia_Chordata_Aves_Passeriformes_Icteridae_Agelaius_phoeniceus",
+    )
+
+
+def test_birder_species_classifier_resolves_taxon_ids_by_scientific_name() -> None:
+    requested_names = []
+
+    def lookup_taxon_ids(scientific_names):
+        requested_names.extend(scientific_names)
+        return {
+            "Agelaius phoeniceus": 9744,
+            "Agelaius tricolor": 9743,
+        }
+
+    classifier = BirderSpeciesClassifier(
+        Settings(species_classifier_top_k=1),
+        device="cpu",
+        model=SimpleNamespace(),
+        model_info=SimpleNamespace(
+            class_to_idx={
+                "03867_Animalia_Chordata_Aves_Passeriformes_Icteridae_Agelaius_phoeniceus": 0,
+                "03868_Animalia_Chordata_Aves_Passeriformes_Icteridae_Agelaius_tricolor": 1,
+            }
+        ),
+        transform=SimpleNamespace(),
+        infer_image=lambda *args, **kwargs: (np.array([0.25, 0.75]), None),
+        taxon_id_by_scientific_name=lookup_taxon_ids,
+    )
+
+    assert requested_names == ["Agelaius phoeniceus", "Agelaius tricolor"]
+    assert classifier.class_index.taxon_id_by_class_id == {
+        0: 9744,
+        1: 9743,
+    }
+
+
 def test_birder_species_classifier_uses_numeric_label_when_class_is_unknown() -> None:
     classifier = BirderSpeciesClassifier(
         Settings(species_classifier_top_k=1),

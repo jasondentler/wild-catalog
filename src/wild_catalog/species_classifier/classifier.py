@@ -4,6 +4,7 @@ from wild_catalog.species_classifier.birder_species_classifier import (
     BirderSpeciesClassifier,
 )
 from wild_catalog.species_classifier.classifier_base import Classifier
+from wild_catalog.species_classifier.raw_classifier_output import RawClassifierOutput
 
 SpeciesClassifier = BirderSpeciesClassifier
 
@@ -12,5 +13,6 @@ __all__ = [
     "DEFAULT_MODELS_DIR",
     "BirderSpeciesClassifier",
     "Classifier",
+    "RawClassifierOutput",
     "SpeciesClassifier",
 ]

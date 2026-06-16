@@ -95,6 +95,14 @@ def load_geopackage_metadata(metadata_url: str = GEOPACKAGE_METADATA_URL) -> Map
 def create_range_store_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(
         """
+        CREATE TABLE IF NOT EXISTS range_taxa (
+            taxon_id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_range_taxa_name
+        ON range_taxa (name);
+
         CREATE TABLE IF NOT EXISTS range_geometries (
             id INTEGER PRIMARY KEY,
             taxon_id INTEGER NOT NULL,
@@ -160,6 +168,7 @@ def import_geopackage(connection: sqlite3.Connection, geopackage_path: str | Pat
     try:
         table_name = _resolve_geopackage_table_name(connection, geopackage_path)
         rtree_table_name = f"rtree_{table_name}_geom"
+        _import_range_taxa_from_attached_geopackage(connection, table_name)
         connection.execute(
             f"""
             INSERT INTO range_geometries (
@@ -204,6 +213,23 @@ def _configure_connection(connection: sqlite3.Connection) -> None:
 
 def _range_geometry_count(connection: sqlite3.Connection) -> int:
     return int(connection.execute("SELECT COUNT(*) FROM range_geometries").fetchone()[0])
+
+
+def _import_range_taxa_from_attached_geopackage(
+    connection: sqlite3.Connection,
+    table_name: str,
+) -> None:
+    connection.execute(
+        f"""
+        INSERT INTO range_taxa (taxon_id, name)
+        SELECT DISTINCT CAST(d.taxon_id AS INTEGER), d.name
+        FROM gpkg_db.{_quote_identifier(table_name)} d
+        WHERE d.taxon_id IS NOT NULL
+          AND d.name IS NOT NULL
+          AND trim(d.name) != ''
+        ON CONFLICT(taxon_id) DO UPDATE SET name = excluded.name
+        """
+    )
 
 
 def _rebuild_rtree(connection: sqlite3.Connection) -> None:

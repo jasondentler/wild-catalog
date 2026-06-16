@@ -40,6 +40,7 @@ Scenarios:
   direct-raw
   direct-dng
   direct-dng-2
+  houston-red-winged-blackbird
   direct-heic
   direct-oversized
   multipart-large-payload
@@ -199,6 +200,15 @@ direct_dng_2() {
     --data-binary "@${DNG_IMAGE_2}"
 }
 
+houston_red_winged_blackbird() {
+  require_file "$DNG_IMAGE"
+  announce "Houston red-winged blackbird DNG upload with GPS override"
+  curl -sS -X POST "${API_URL}/identify" \
+    -H 'accept: application/json' \
+    -F "image=@${DNG_IMAGE};type=application/octet-stream" \
+    -F 'payload={"original_filename":"20260525-IMG_7906.dng","exif_override":{"gps_coordinates":{"latitude":29.7604,"longitude":-95.3698}}};type=application/json'
+}
+
 direct_heic() {
   require_file "$HEIC_IMAGE"
   announce "Direct HEIC upload"
@@ -269,6 +279,7 @@ all() {
   direct_raw
   direct_dng
   direct_dng_2
+  houston_red_winged_blackbird
   direct_heic
   direct_oversized
   multipart_large_payload
@@ -319,6 +330,9 @@ main() {
       ;;
     direct-dng-2)
       direct_dng_2
+      ;;
+    houston-red-winged-blackbird)
+      houston_red_winged_blackbird
       ;;
     direct-heic)
       direct_heic

@@ -27,12 +27,19 @@ def test_get_settings_is_cached(monkeypatch) -> None:
 
 
 def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
-    settings = SimpleNamespace(marker="settings")
+    settings = SimpleNamespace(
+        marker="settings",
+        logit_conditioning_gamma=2.0,
+        logit_conditioning_epsilon=1e-12,
+        species_classifier_top_k=5,
+    )
     conversion = SimpleNamespace(marker="conversion")
     wildlife_detector = SimpleNamespace(marker="wildlife_detector", device="mps")
     detection_deduplicator = SimpleNamespace(marker="detection_deduplicator")
     image_cropper = SimpleNamespace(marker="image_cropper")
     species_classifier = SimpleNamespace(marker="species_classifier")
+    expected_range_prior_service = SimpleNamespace(marker="range_prior_service")
+    expected_logit_conditioner = SimpleNamespace(marker="logit_conditioner")
     detection_processing_pipeline = SimpleNamespace(
         marker="detection_processing_pipeline"
     )
@@ -61,10 +68,41 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
         else None,
     )
     monkeypatch.setattr(
-        "wild_catalog.api.dependencies.DetectionProcessingPipeline",
-        lambda received_cropper, received_classifier: detection_processing_pipeline
-        if received_cropper is image_cropper and received_classifier is species_classifier
+        "wild_catalog.api.dependencies.SpeciesRangePriorService",
+        lambda received_settings: expected_range_prior_service
+        if received_settings is settings
         else None,
+    )
+
+    def build_logit_conditioner(*, gamma, epsilon, top_k):
+        if gamma == 2.0 and epsilon == 1e-12 and top_k == 5:
+            return expected_logit_conditioner
+        return None
+
+    monkeypatch.setattr(
+        "wild_catalog.api.dependencies.LogitConditioner",
+        build_logit_conditioner,
+    )
+
+    def build_detection_processing_pipeline(
+        received_cropper,
+        received_classifier,
+        *,
+        range_prior_service: object,
+        logit_conditioner: object,
+    ):
+        if (
+            received_cropper is image_cropper
+            and received_classifier is species_classifier
+            and range_prior_service is expected_range_prior_service
+            and logit_conditioner is expected_logit_conditioner
+        ):
+            return detection_processing_pipeline
+        return None
+
+    monkeypatch.setattr(
+        "wild_catalog.api.dependencies.DetectionProcessingPipeline",
+        build_detection_processing_pipeline,
     )
 
     get_identify_pipeline.cache_clear()

@@ -217,8 +217,8 @@ def test_identify_pipeline_uses_injected_detection_processing_pipeline() -> None
         processing_calls = []
         conversion = _Conversion(SimpleNamespace(image=image))
 
-        def process(received_image, detection):
-            processing_calls.append((received_image, detection))
+        def process(received_image, detection, gps_coordinates=None):
+            processing_calls.append((received_image, detection, gps_coordinates))
             return IdentifiedObject(
                 bounding_box=detection.box,
                 bounding_box_with_margin=detection.box,
@@ -254,5 +254,5 @@ def test_identify_pipeline_uses_injected_detection_processing_pipeline() -> None
 
     result, processing_calls, retained_detection, image = asyncio.run(run())
 
-    assert processing_calls == [(image, retained_detection)]
+    assert processing_calls == [(image, retained_detection, None)]
     assert result.objects[0].bounding_box == retained_detection.box

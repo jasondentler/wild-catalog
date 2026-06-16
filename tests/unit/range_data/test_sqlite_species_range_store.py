@@ -52,6 +52,31 @@ def test_sqlite_species_range_store_returns_empty_list_without_taxa(tmp_path) ->
     store.close()
 
 
+def test_sqlite_species_range_store_gets_taxon_ids_by_names(tmp_path) -> None:
+    database_path = tmp_path / "range-store.sqlite"
+    _create_range_store(database_path)
+    store = SQLiteSpeciesRangeStore(database_path)
+
+    taxon_ids = store.get_taxon_ids_by_names(
+        ["Agelaius tricolor", "Agelaius phoeniceus", "Missing bird"]
+    )
+
+    assert taxon_ids == {
+        "Agelaius phoeniceus": 10,
+        "Agelaius tricolor": 20,
+    }
+    store.close()
+
+
+def test_sqlite_species_range_store_returns_empty_taxon_ids_without_names(tmp_path) -> None:
+    database_path = tmp_path / "range-store.sqlite"
+    _create_range_store(database_path)
+    store = SQLiteSpeciesRangeStore(database_path)
+
+    assert store.get_taxon_ids_by_names([]) == {}
+    store.close()
+
+
 def test_sqlite_species_range_store_close_is_idempotent(tmp_path) -> None:
     database_path = tmp_path / "range-store.sqlite"
     _create_range_store(database_path)
@@ -65,6 +90,16 @@ def _create_range_store(database_path) -> None:
     with closing(sqlite3.connect(database_path)) as connection:
         with connection:
             create_range_store_schema(connection)
+            connection.executemany(
+                """
+                INSERT INTO range_taxa (taxon_id, name)
+                VALUES (?, ?)
+                """,
+                [
+                    (10, "Agelaius phoeniceus"),
+                    (20, "Agelaius tricolor"),
+                ],
+            )
             connection.execute(
                 """
                 INSERT INTO range_geometries (

@@ -9,6 +9,9 @@ from wild_catalog.detection_processing_pipeline.detection_processing_pipeline im
 )
 from wild_catalog.identify_pipeline.identify_pipeline import IdentifyPipeline
 from wild_catalog.image_cropper.image_cropping import ImageCropper
+from wild_catalog.logit_conditioning import LogitConditioner
+from wild_catalog.range_data.sqlite_species_range_store import SQLiteSpeciesRangeStore
+from wild_catalog.range_data.species_range_prior_service import SpeciesRangePriorService
 from wild_catalog.species_classifier.classifier import SpeciesClassifier
 from wild_catalog.wildlife_detection.detector import WildlifeDetector
 
@@ -24,13 +27,21 @@ def get_identify_pipeline() -> IdentifyPipeline:
     conversion = ImageConversionService(settings)
     wildlife_detector = WildlifeDetector()
     detection_deduplicator = DetectionDeduplicator()
+    range_store = SQLiteSpeciesRangeStore(settings.range_store_database_path)
     species_classifier = SpeciesClassifier(
         settings,
         device=getattr(wildlife_detector, "device", None),
+        taxon_id_by_scientific_name=range_store.get_taxon_ids_by_names,
     )
     detection_processing_pipeline = DetectionProcessingPipeline(
         ImageCropper(settings),
         species_classifier,
+        range_prior_service=SpeciesRangePriorService(settings, store=range_store),
+        logit_conditioner=LogitConditioner(
+            gamma=settings.logit_conditioning_gamma,
+            epsilon=settings.logit_conditioning_epsilon,
+            top_k=settings.species_classifier_top_k,
+        ),
     )
 
     return IdentifyPipeline(

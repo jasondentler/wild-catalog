@@ -1,12 +1,17 @@
+import torch
 from PIL import Image
 
 from wild_catalog.core.settings import Settings
-from wild_catalog.core.types import BoundingBox, Detection
+from wild_catalog.core.types import BoundingBox, Detection, GpsCoordinates
 from wild_catalog.detection_processing_pipeline.detection_processing_pipeline import (
     DetectionProcessingPipeline,
 )
 from wild_catalog.identify_pipeline.prediction import Prediction
 from wild_catalog.image_cropper.image_cropping import ImageCropper
+from wild_catalog.logit_conditioning import LogitConditioner
+from wild_catalog.range_data.class_index import ClassIndex
+from wild_catalog.range_data.prior_mask import PriorMask
+from wild_catalog.species_classifier.raw_classifier_output import RawClassifierOutput
 
 
 class _Classifier:
@@ -17,6 +22,48 @@ class _Classifier:
     def classify(self, image: Image.Image) -> list[Prediction]:
         self.calls.append(image)
         return self.predictions
+
+
+class _RawClassifier:
+    def __init__(self) -> None:
+        self.classify_calls = []
+        self.classify_raw_calls = []
+
+    def classify(self, image: Image.Image) -> list[Prediction]:
+        self.classify_calls.append(image)
+        return [
+            Prediction(
+                confidence=0.6,
+                class_id=0,
+                taxonomy=("raw-classifier-fallback",),
+            )
+        ]
+
+    def classify_raw(self, image: Image.Image) -> RawClassifierOutput:
+        self.classify_raw_calls.append(image)
+        return RawClassifierOutput(
+            probabilities=torch.tensor([[0.8, 0.2]]),
+            class_index=ClassIndex(
+                id="inat21",
+                taxon_id_by_class_id={0: 10, 1: 20},
+                taxonomy_path_by_class_id={
+                    0: ("absent species",),
+                    1: ("present species",),
+                },
+            ),
+        )
+
+
+class _RangePriorService:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def generate_prior_mask(self, gps_coordinates, class_index):
+        self.calls.append((gps_coordinates, class_index))
+        return PriorMask(
+            values=torch.tensor([0.01, 1.0]),
+            class_index_id=class_index.id,
+        )
 
 
 def test_detection_processing_pipeline_crops_detection_and_classifies_crop() -> None:
@@ -82,3 +129,60 @@ def test_detection_processing_pipeline_returns_empty_predictions_when_classifier
     ).process(image, detection)
 
     assert result.predictions == ()
+
+
+def test_detection_processing_pipeline_applies_range_prior_when_gps_is_available() -> None:
+    image = Image.new("RGB", (100, 120), color=(255, 0, 0))
+    detection = Detection(
+        box=BoundingBox(xmin=1, ymin=2, xmax=11, ymax=22),
+        confidence=0.87,
+        class_id=3,
+        label="animal",
+    )
+    classifier = _RawClassifier()
+    range_prior_service = _RangePriorService()
+    gps_coordinates = GpsCoordinates(latitude=29.7604, longitude=-95.3698)
+
+    result = DetectionProcessingPipeline(
+        ImageCropper(
+            Settings(
+                crop_margin_ratio=0.1,
+                crop_margin_min_px=8,
+            )
+        ),
+        classifier,
+        range_prior_service=range_prior_service,
+        logit_conditioner=LogitConditioner(gamma=2.0, epsilon=1e-12, top_k=2),
+    ).process(image, detection, gps_coordinates)
+
+    assert classifier.classify_calls == []
+    assert classifier.classify_raw_calls == [result.cropped_image]
+    assert range_prior_service.calls[0][0] == gps_coordinates
+    assert [prediction.class_id for prediction in result.predictions] == [1, 0]
+    assert result.predictions[0].taxonomy == ("present species",)
+
+
+def test_detection_processing_pipeline_uses_classifier_when_gps_is_missing() -> None:
+    image = Image.new("RGB", (100, 120), color=(255, 0, 0))
+    detection = Detection(
+        box=BoundingBox(xmin=1, ymin=2, xmax=11, ymax=22),
+        confidence=0.87,
+        class_id=3,
+        label="animal",
+    )
+    classifier = _RawClassifier()
+
+    result = DetectionProcessingPipeline(
+        ImageCropper(
+            Settings(
+                crop_margin_ratio=0.1,
+                crop_margin_min_px=8,
+            )
+        ),
+        classifier,
+        range_prior_service=_RangePriorService(),
+    ).process(image, detection)
+
+    assert classifier.classify_calls == [result.cropped_image]
+    assert classifier.classify_raw_calls == []
+    assert result.predictions[0].taxonomy == ("raw-classifier-fallback",)

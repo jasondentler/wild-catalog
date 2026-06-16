@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from wild_catalog.api.app import app
 from wild_catalog.api.dependencies import get_identify_pipeline
 from wild_catalog.api.openapi_schemas import IDENTIFY_REQUEST_OPENAPI_EXTRA
+from wild_catalog.core.types import GpsCoordinates
+from wild_catalog.identify_pipeline.identify_command import ExifOverride
 from wild_catalog.identify_pipeline.identify_result import IdentifyResult
 
 SAMPLE_IMAGES_DIR = Path("sample-images")
@@ -36,6 +38,11 @@ class DummyPipeline:
         self.calls.append((command, file))
         return IdentifyResult(
             objects=(),
+            gps_coordinates=(
+                command.exif_override.gps_coordinates
+                if command.exif_override is not None
+                else None
+            ),
             return_detected_images=self.return_detected_images,
         )
 
@@ -305,6 +312,54 @@ def test_openapi_document_includes_identify_upload_examples() -> None:
             {"gps_coordinates": None, "results": []},
             [("original_filename", DNG_IMAGE_2.name)],
             id="direct-dng-2",
+        ),
+        pytest.param(
+            "houston-red-winged-blackbird",
+            {
+                "files": {
+                    "image": (
+                        DNG_IMAGE.name,
+                        DNG_IMAGE.read_bytes(),
+                        "application/octet-stream",
+                    )
+                },
+                "data": {
+                    "payload": json.dumps(
+                            {
+                                "original_filename": DNG_IMAGE.name,
+                                "exif_override": {
+                                    "gps_coordinates": {
+                                        "latitude": 29.7604,
+                                        "longitude": -95.3698,
+                                    },
+                                },
+                            }
+                    )
+                },
+                "headers": {"accept": "application/json"},
+            },
+            200,
+            "application/json",
+            {
+                "gps_coordinates": {
+                    "latitude": 29.7604,
+                    "longitude": -95.3698,
+                },
+                "results": [],
+            },
+            [
+                ("original_filename", DNG_IMAGE.name),
+                (
+                    "exif_override",
+                    ExifOverride(
+                        gps_coordinates=GpsCoordinates(
+                            latitude=29.7604,
+                            longitude=-95.3698,
+                        ),
+                    ),
+                ),
+            ],
+            id="houston-red-winged-blackbird",
         ),
     ],
 )

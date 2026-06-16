@@ -125,6 +125,17 @@ curl -X POST 'http://127.0.0.1:8000/identify' \
   --data-binary '@sample-images/20260525-IMG_7906_1.dng'
 ```
 
+## Houston Red-Winged Blackbird DNG Upload
+
+Use this for the red-winged blackbird sample photographed near Houston, Texas. The DNG does not provide GPS metadata for this scenario, so the request sends a multipart payload with a GPS override for Houston coordinates.
+
+```bash
+curl -X POST 'http://127.0.0.1:8000/identify' \
+  -H 'accept: application/json' \
+  -F 'image=@sample-images/20260525-IMG_7906.dng;type=application/octet-stream' \
+  -F 'payload={"original_filename":"20260525-IMG_7906.dng","exif_override":{"gps_coordinates":{"latitude":29.7604,"longitude":-95.3698}}};type=application/json'
+```
+
 ## Oversized Payload Upload
 
 Use this to verify the content-length limiter rejects payloads that exceed the configured upload size.
