@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -129,7 +130,7 @@ def test_import_geopackages_creates_store_rebuilds_rtree_and_stores_metadata(tmp
     )
 
     assert rows_imported == 1
-    with sqlite3.connect(target_database_path) as connection:
+    with closing(sqlite3.connect(target_database_path)) as connection:
         range_rows = connection.execute(
             "SELECT id, taxon_id, min_lon, max_lon, min_lat, max_lat FROM range_geometries"
         ).fetchall()
@@ -235,16 +236,17 @@ def test_import_geopackage_detaches_database_after_failure(tmp_path) -> None:
     geopackage_path = tmp_path / "iNaturalist_geomodel_Amphibia.gpkg"
     connection = sqlite3.connect(":memory:")
     create_range_store_schema(connection)
-    with sqlite3.connect(geopackage_path) as geopackage_connection:
-        geopackage_connection.execute(
-            """
-            CREATE TABLE "iNaturalist_geomodel_Amphibia" (
-                fid INTEGER PRIMARY KEY,
-                taxon_id TEXT NOT NULL,
-                geom BLOB NOT NULL
+    with closing(sqlite3.connect(geopackage_path)) as geopackage_connection:
+        with geopackage_connection:
+            geopackage_connection.execute(
+                """
+                CREATE TABLE "iNaturalist_geomodel_Amphibia" (
+                    fid INTEGER PRIMARY KEY,
+                    taxon_id TEXT NOT NULL,
+                    geom BLOB NOT NULL
+                )
+                """
             )
-            """
-        )
 
     with pytest.raises(sqlite3.OperationalError):
         import_geopackage(connection, geopackage_path)
@@ -272,6 +274,7 @@ def test_create_range_store_schema_creates_expected_tables() -> None:
     assert "range_geometries" in tables
     assert "range_geometries_rtree" in tables
     assert "range_store_metadata" in tables
+    connection.close()
 
 
 def _create_fake_geopackage(
@@ -283,33 +286,34 @@ def _create_fake_geopackage(
 ) -> None:
     minx, maxx, miny, maxy = bounds
     geometry_with_header = b"abcAefgh" + wkb
-    with sqlite3.connect(geopackage_path) as connection:
-        connection.execute(
-            f"""
-            CREATE TABLE "{table_name}" (
-                fid INTEGER PRIMARY KEY,
-                taxon_id TEXT NOT NULL,
-                geom BLOB NOT NULL
+    with closing(sqlite3.connect(geopackage_path)) as connection:
+        with connection:
+            connection.execute(
+                f"""
+                CREATE TABLE "{table_name}" (
+                    fid INTEGER PRIMARY KEY,
+                    taxon_id TEXT NOT NULL,
+                    geom BLOB NOT NULL
+                )
+                """
             )
-            """
-        )
-        connection.execute(
-            f"""
-            CREATE TABLE "rtree_{table_name}_geom" (
-                id INTEGER PRIMARY KEY,
-                minx REAL NOT NULL,
-                maxx REAL NOT NULL,
-                miny REAL NOT NULL,
-                maxy REAL NOT NULL
+            connection.execute(
+                f"""
+                CREATE TABLE "rtree_{table_name}_geom" (
+                    id INTEGER PRIMARY KEY,
+                    minx REAL NOT NULL,
+                    maxx REAL NOT NULL,
+                    miny REAL NOT NULL,
+                    maxy REAL NOT NULL
+                )
+                """
             )
-            """
-        )
-        connection.execute(
-            f'INSERT INTO "{table_name}" (fid, taxon_id, geom) VALUES (?, ?, ?)',
-            (1, taxon_id, geometry_with_header),
-        )
-        connection.execute(
-            f'INSERT INTO "rtree_{table_name}_geom" (id, minx, maxx, miny, maxy) '
-            "VALUES (?, ?, ?, ?, ?)",
-            (1, minx, maxx, miny, maxy),
-        )
+            connection.execute(
+                f'INSERT INTO "{table_name}" (fid, taxon_id, geom) VALUES (?, ?, ?)',
+                (1, taxon_id, geometry_with_header),
+            )
+            connection.execute(
+                f'INSERT INTO "rtree_{table_name}_geom" (id, minx, maxx, miny, maxy) '
+                "VALUES (?, ?, ?, ?, ?)",
+                (1, minx, maxx, miny, maxy),
+            )

@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -50,7 +51,7 @@ def test_import_geopackages_imports_split_archive_files_into_range_store(tmp_pat
     )
 
     assert rows_imported == 2
-    with sqlite3.connect(target_database_path) as connection:
+    with closing(sqlite3.connect(target_database_path)) as connection:
         range_rows = connection.execute(
             """
             SELECT id, taxon_id, min_lon, min_lat, max_lon, max_lat, geometry_wkb
@@ -83,36 +84,37 @@ def test_import_geopackages_imports_split_archive_files_into_range_store(tmp_pat
 
 
 def _create_fake_geopackage(geopackage_path, table_name: str, rows: list[dict]) -> None:
-    with sqlite3.connect(geopackage_path) as connection:
-        connection.execute(
-            f"""
-            CREATE TABLE "{table_name}" (
-                fid INTEGER PRIMARY KEY,
-                taxon_id TEXT NOT NULL,
-                geom BLOB NOT NULL
-            )
-            """
-        )
-        connection.execute(
-            f"""
-            CREATE TABLE "rtree_{table_name}_geom" (
-                id INTEGER PRIMARY KEY,
-                minx REAL NOT NULL,
-                maxx REAL NOT NULL,
-                miny REAL NOT NULL,
-                maxy REAL NOT NULL
-            )
-            """
-        )
-        for row in rows:
-            minx, maxx, miny, maxy = row["bounds"]
-            geometry_with_header = b"abcAefgh" + row["wkb"]
+    with closing(sqlite3.connect(geopackage_path)) as connection:
+        with connection:
             connection.execute(
-                f'INSERT INTO "{table_name}" (fid, taxon_id, geom) VALUES (?, ?, ?)',
-                (row["fid"], row["taxon_id"], geometry_with_header),
+                f"""
+                CREATE TABLE "{table_name}" (
+                    fid INTEGER PRIMARY KEY,
+                    taxon_id TEXT NOT NULL,
+                    geom BLOB NOT NULL
+                )
+                """
             )
             connection.execute(
-                f'INSERT INTO "rtree_{table_name}_geom" (id, minx, maxx, miny, maxy) '
-                "VALUES (?, ?, ?, ?, ?)",
-                (row["fid"], minx, maxx, miny, maxy),
+                f"""
+                CREATE TABLE "rtree_{table_name}_geom" (
+                    id INTEGER PRIMARY KEY,
+                    minx REAL NOT NULL,
+                    maxx REAL NOT NULL,
+                    miny REAL NOT NULL,
+                    maxy REAL NOT NULL
+                )
+                """
             )
+            for row in rows:
+                minx, maxx, miny, maxy = row["bounds"]
+                geometry_with_header = b"abcAefgh" + row["wkb"]
+                connection.execute(
+                    f'INSERT INTO "{table_name}" (fid, taxon_id, geom) VALUES (?, ?, ?)',
+                    (row["fid"], row["taxon_id"], geometry_with_header),
+                )
+                connection.execute(
+                    f'INSERT INTO "rtree_{table_name}_geom" (id, minx, maxx, miny, maxy) '
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (row["fid"], minx, maxx, miny, maxy),
+                )

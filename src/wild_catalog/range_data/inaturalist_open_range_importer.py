@@ -3,6 +3,7 @@ import logging
 import re
 import sqlite3
 from collections.abc import Iterable, Mapping
+from contextlib import closing
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import urlopen
@@ -136,7 +137,7 @@ def import_geopackages(
     geopackage_paths: Iterable[str | Path],
     metadata: Mapping[str, object] | None = None,
 ) -> int:
-    with sqlite3.connect(target_database_path) as connection:
+    with closing(sqlite3.connect(target_database_path)) as connection:
         _configure_connection(connection)
         create_range_store_schema(connection)
 
