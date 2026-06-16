@@ -51,7 +51,7 @@ The current pipeline invokes the detector and keeps the stage boundary in place,
 The default model path used by tests and local workflows is:
 
 ```text
-models/MDV6-apa-rtdetr-e.pth
+data/models/MDV6-apa-rtdetr-e.pth
 ```
 
 If no explicit model weights are supplied, PyTorch-Wildlife may download its configured weights. The Apache RT-DETR implementation may also use Torch Hub to fetch an RT-DETR backbone checkpoint on first model construction.
@@ -59,7 +59,7 @@ If no explicit model weights are supplied, PyTorch-Wildlife may download its con
 When `TORCH_HOME` is not set, Wild Catalog points Torch Hub at:
 
 ```text
-models/torch-hub
+data/models/torch-hub
 ```
 
 That keeps generated detector assets under the project workspace instead of the user-level Torch cache.

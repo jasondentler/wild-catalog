@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -11,6 +12,7 @@ from wild_catalog.species_classifier.classifier_base import Classifier
 from wild_catalog.wildlife_detection.device import get_torch_device
 
 DEFAULT_MODEL_NAME = "hieradet_d_small_dino-v2-inat21"
+DEFAULT_MODELS_DIR = Path("data/models")
 
 ModelLoader = Callable[..., tuple[Any, Any, Callable[..., torch.Tensor]]]
 InferImage = Callable[..., tuple[np.ndarray, np.ndarray | None]]
@@ -35,6 +37,7 @@ class BirderSpeciesClassifier(Classifier):
         settings = settings or Settings()
         self.device = torch.device(device or get_torch_device())
         self.model_name = model_name
+        self.models_dir = DEFAULT_MODELS_DIR
         self.top_k = top_k if top_k is not None else settings.species_classifier_top_k
         self._infer_image = infer_image or self._get_infer_image()
 
@@ -67,7 +70,10 @@ class BirderSpeciesClassifier(Classifier):
         if model_loader is None:
             import birder.net  # noqa: F401
             from birder import load_pretrained_model_and_transform
+            from birder.conf import settings as birder_settings
 
+            self.models_dir.mkdir(parents=True, exist_ok=True)
+            birder_settings.MODELS_DIR = self.models_dir
             model_loader = load_pretrained_model_and_transform
 
         return model_loader(

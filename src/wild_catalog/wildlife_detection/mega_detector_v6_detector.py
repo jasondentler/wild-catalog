@@ -17,8 +17,9 @@ from wild_catalog.wildlife_detection.pytorch_wildlife_stdout import (
 from wild_catalog.wildlife_detection.torch_hub_cache import configure_torch_hub_dir
 
 DEFAULT_CONFIDENCE_THRESHOLD = 0.3
-DEFAULT_MODEL_PATH = Path("models/MDV6-apa-rtdetr-e.pth")
-DEFAULT_TORCH_HUB_DIR = Path("models/torch-hub")
+DEFAULT_MODELS_DIR = Path("data/models")
+DEFAULT_MODEL_PATH = DEFAULT_MODELS_DIR / "MDV6-apa-rtdetr-e.pth"
+DEFAULT_TORCH_HUB_DIR = DEFAULT_MODELS_DIR / "torch-hub"
 DEFAULT_MODEL_VERSION = "MDV6-apa-rtdetr-e"
 
 ModelFactory = Callable[..., Any]

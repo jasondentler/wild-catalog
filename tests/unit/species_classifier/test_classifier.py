@@ -8,6 +8,7 @@ from PIL import Image
 from wild_catalog.core.settings import Settings
 from wild_catalog.species_classifier.classifier import (
     DEFAULT_MODEL_NAME,
+    DEFAULT_MODELS_DIR,
     BirderSpeciesClassifier,
     Classifier,
     SpeciesClassifier,
@@ -67,9 +68,11 @@ def test_birder_species_classifier_uses_lazy_birder_imports(monkeypatch) -> None
 
     birder_module = ModuleType("birder")
     birder_module.__path__ = []
+    birder_conf_module = ModuleType("birder.conf")
     birder_net_module = ModuleType("birder.net")
     birder_inference_module = ModuleType("birder.inference")
     birder_classification_module = ModuleType("birder.inference.classification")
+    birder_conf_settings = SimpleNamespace(MODELS_DIR=None)
 
     def load_pretrained_model_and_transform(*args, **kwargs):
         loaded.append((args, kwargs))
@@ -79,8 +82,10 @@ def test_birder_species_classifier_uses_lazy_birder_imports(monkeypatch) -> None
         return np.array([[0.9]]), None
 
     birder_module.load_pretrained_model_and_transform = load_pretrained_model_and_transform
+    birder_conf_module.settings = birder_conf_settings
     birder_classification_module.infer_image = infer_image
     monkeypatch.setitem(sys.modules, "birder", birder_module)
+    monkeypatch.setitem(sys.modules, "birder.conf", birder_conf_module)
     monkeypatch.setitem(sys.modules, "birder.net", birder_net_module)
     monkeypatch.setitem(sys.modules, "birder.inference", birder_inference_module)
     monkeypatch.setitem(
@@ -99,6 +104,7 @@ def test_birder_species_classifier_uses_lazy_birder_imports(monkeypatch) -> None
     assert loaded[0][0] == (DEFAULT_MODEL_NAME,)
     assert loaded[0][1]["inference"] is True
     assert loaded[0][1]["device"] == classifier.device
+    assert birder_conf_settings.MODELS_DIR == DEFAULT_MODELS_DIR
     assert predictions[0].taxonomy == ("mallard",)
 
 

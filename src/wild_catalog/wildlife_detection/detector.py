@@ -3,6 +3,7 @@ from wild_catalog.wildlife_detection.mega_detector_v6_detector import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_MODEL_PATH,
     DEFAULT_MODEL_VERSION,
+    DEFAULT_MODELS_DIR,
     DEFAULT_TORCH_HUB_DIR,
     MegaDetectorV6Detector,
 )
@@ -11,6 +12,7 @@ WildlifeDetector = MegaDetectorV6Detector
 
 __all__ = [
     "DEFAULT_CONFIDENCE_THRESHOLD",
+    "DEFAULT_MODELS_DIR",
     "DEFAULT_MODEL_PATH",
     "DEFAULT_MODEL_VERSION",
     "DEFAULT_TORCH_HUB_DIR",

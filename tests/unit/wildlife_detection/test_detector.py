@@ -64,7 +64,7 @@ def test_megadetector_v6_detector_loads_model_from_factory(monkeypatch) -> None:
 
     detector = MegaDetectorV6Detector(
         model_factory=fake_model_factory,
-        model_weights=Path("models/MDV6-apa-rtdetr-e.pth"),
+        model_weights=Path("data/models/MDV6-apa-rtdetr-e.pth"),
     )
 
     assert detector.device == "cuda"
@@ -73,7 +73,7 @@ def test_megadetector_v6_detector_loads_model_from_factory(monkeypatch) -> None:
         "device": "cuda",
         "pretrained": True,
         "version": DEFAULT_MODEL_VERSION,
-        "weights": "models/MDV6-apa-rtdetr-e.pth",
+        "weights": "data/models/MDV6-apa-rtdetr-e.pth",
     }
 
 
