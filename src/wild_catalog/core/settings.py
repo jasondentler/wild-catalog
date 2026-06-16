@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 MDV6_APACHE_RTDETR_E_URL = (
     "https://zenodo.org/records/15398270/files/"
@@ -18,6 +19,12 @@ DEFAULTS = {
     "WILD_CATALOG_CROP_MARGIN_RATIO": 0.10,
     "WILD_CATALOG_CROP_MARGIN_MIN_PX": 8,
     "WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K": 20,
+    "WILD_CATALOG_RANGE_STORE_DATABASE_PATH": Path(
+        "data/range-data/inaturalist-open-range-store.sqlite"
+    ),
+    "WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR": Path(
+        "data/range-data/geopackages"
+    ),
 }
 
 
@@ -28,6 +35,12 @@ class Settings:
     crop_margin_ratio: float = DEFAULTS["WILD_CATALOG_CROP_MARGIN_RATIO"]
     crop_margin_min_px: int = DEFAULTS["WILD_CATALOG_CROP_MARGIN_MIN_PX"]
     species_classifier_top_k: int = DEFAULTS["WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K"]
+    range_store_database_path: Path = DEFAULTS[
+        "WILD_CATALOG_RANGE_STORE_DATABASE_PATH"
+    ]
+    range_geopackage_download_dir: Path = DEFAULTS[
+        "WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR"
+    ]
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -39,12 +52,18 @@ class Settings:
             species_classifier_top_k=cls._get_int_value(
                 "WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K"
             ),
+            range_store_database_path=cls._get_path_value(
+                "WILD_CATALOG_RANGE_STORE_DATABASE_PATH"
+            ),
+            range_geopackage_download_dir=cls._get_path_value(
+                "WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR"
+            ),
         )
 
     @staticmethod
     def _get_str_value(key: str) -> str:
         default = DEFAULTS[key]
-        return os.getenv(key, default)
+        return os.getenv(key, str(default))
 
     @staticmethod
     def _get_int_value(key: str) -> int:
@@ -53,3 +72,7 @@ class Settings:
     @staticmethod
     def _get_float_value(key: str) -> float:
         return float(Settings._get_str_value(key))
+
+    @staticmethod
+    def _get_path_value(key: str) -> Path:
+        return Path(Settings._get_str_value(key))

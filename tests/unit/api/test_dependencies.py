@@ -67,10 +67,15 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
         else None,
     )
 
-    pipeline = get_identify_pipeline()
+    get_identify_pipeline.cache_clear()
 
-    assert pipeline._settings is settings
-    assert pipeline._conversion is conversion
-    assert pipeline._wildlife_detector is wildlife_detector
-    assert pipeline._detection_deduplicator is detection_deduplicator
-    assert pipeline._detection_processing_pipeline is detection_processing_pipeline
+    try:
+        pipeline = get_identify_pipeline()
+
+        assert pipeline._settings is settings
+        assert pipeline._conversion is conversion
+        assert pipeline._wildlife_detector is wildlife_detector
+        assert pipeline._detection_deduplicator is detection_deduplicator
+        assert pipeline._detection_processing_pipeline is detection_processing_pipeline
+    finally:
+        get_identify_pipeline.cache_clear()

@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from urllib.error import URLError
-from urllib.request import urlopen
 
 import pytest
 from PIL import Image
@@ -11,6 +10,7 @@ from PIL import Image
 from wild_catalog.core.settings import MDV6_APACHE_RTDETR_E_URL
 from wild_catalog.core.types import Detection
 from wild_catalog.wildlife_detection.detector import DEFAULT_MODEL_PATH, WildlifeDetector
+from wild_catalog.wildlife_detection.model_download import download_file_with_progress
 
 MODEL_PATH = DEFAULT_MODEL_PATH
 MODEL_URL = os.getenv(
@@ -34,19 +34,11 @@ def detector_model_path() -> Path:
     if MODEL_PATH.exists():
         return MODEL_PATH
 
-    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    partial_path = MODEL_PATH.with_suffix(f"{MODEL_PATH.suffix}.part")
-
     try:
-        with urlopen(MODEL_URL, timeout=120) as response:
-            with partial_path.open("wb") as model_file:
-                while chunk := response.read(1024 * 1024):
-                    model_file.write(chunk)
+        download_file_with_progress(MODEL_URL, MODEL_PATH)
     except (OSError, URLError) as exc:
-        partial_path.unlink(missing_ok=True)
         pytest.fail(f"Failed to download detector model from {MODEL_URL}: {exc}")
 
-    partial_path.replace(MODEL_PATH)
     return MODEL_PATH
 
 

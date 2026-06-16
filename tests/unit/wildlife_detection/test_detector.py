@@ -77,6 +77,38 @@ def test_megadetector_v6_detector_loads_model_from_factory(monkeypatch) -> None:
     }
 
 
+def test_megadetector_v6_detector_downloads_default_weights_before_real_factory(
+    monkeypatch,
+) -> None:
+    calls = {}
+    model = _fake_pytorch_wildlife_model()
+
+    def fake_download(url, destination):
+        calls["download"] = (url, destination)
+
+    def fake_get_factory():
+        calls["factory_loaded"] = True
+
+        def fake_model_factory(**kwargs):
+            calls["model_kwargs"] = kwargs
+            return model
+
+        return fake_model_factory
+
+    monkeypatch.setattr(detector_module, "get_torch_device", lambda: "cpu")
+    monkeypatch.setattr(detector_module, "download_file_with_progress", fake_download)
+    monkeypatch.setattr(detector_module, "get_megadetector_v6_factory", fake_get_factory)
+
+    detector = MegaDetectorV6Detector()
+
+    assert detector.model is model
+    assert calls["download"] == (
+        detector_module.MDV6_APACHE_RTDETR_E_URL,
+        detector_module.DEFAULT_MODEL_PATH,
+    )
+    assert calls["model_kwargs"]["weights"] == str(detector_module.DEFAULT_MODEL_PATH)
+
+
 def test_megadetector_v6_detector_suppresses_pytorch_wildlife_load_print(capsys) -> None:
     model = _fake_pytorch_wildlife_model()
 

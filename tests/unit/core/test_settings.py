@@ -9,6 +9,14 @@ def test_settings_from_env_uses_environment_overrides(
     monkeypatch.setenv("WILD_CATALOG_CROP_MARGIN_RATIO", "0.25")
     monkeypatch.setenv("WILD_CATALOG_CROP_MARGIN_MIN_PX", "12")
     monkeypatch.setenv("WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K", "7")
+    monkeypatch.setenv(
+        "WILD_CATALOG_RANGE_STORE_DATABASE_PATH",
+        "custom/range-store.sqlite",
+    )
+    monkeypatch.setenv(
+        "WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR",
+        "custom/geopackages",
+    )
 
     settings = Settings.from_env()
 
@@ -17,6 +25,8 @@ def test_settings_from_env_uses_environment_overrides(
     assert settings.crop_margin_ratio == 0.25
     assert settings.crop_margin_min_px == 12
     assert settings.species_classifier_top_k == 7
+    assert str(settings.range_store_database_path) == "custom/range-store.sqlite"
+    assert str(settings.range_geopackage_download_dir) == "custom/geopackages"
 
 
 def test_settings_from_env_uses_defaults_when_env_is_missing(
@@ -27,6 +37,8 @@ def test_settings_from_env_uses_defaults_when_env_is_missing(
     monkeypatch.delenv("WILD_CATALOG_CROP_MARGIN_RATIO", raising=False)
     monkeypatch.delenv("WILD_CATALOG_CROP_MARGIN_MIN_PX", raising=False)
     monkeypatch.delenv("WILD_CATALOG_SPECIES_CLASSIFIER_TOP_K", raising=False)
+    monkeypatch.delenv("WILD_CATALOG_RANGE_STORE_DATABASE_PATH", raising=False)
+    monkeypatch.delenv("WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR", raising=False)
 
     settings = Settings.from_env()
 
@@ -35,3 +47,7 @@ def test_settings_from_env_uses_defaults_when_env_is_missing(
     assert settings.crop_margin_ratio == 0.10
     assert settings.crop_margin_min_px == 8
     assert settings.species_classifier_top_k == 20
+    assert str(settings.range_store_database_path) == (
+        "data/range-data/inaturalist-open-range-store.sqlite"
+    )
+    assert str(settings.range_geopackage_download_dir) == "data/range-data/geopackages"

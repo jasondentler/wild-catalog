@@ -2,6 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from wild_catalog.api import app as app_module
 from wild_catalog.api.app import app
 from wild_catalog.api.dependencies import get_identify_pipeline
 from wild_catalog.identify_pipeline.identify_result import IdentifyResult
@@ -23,6 +24,26 @@ def test_openapi_json_is_available() -> None:
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
+
+
+def test_lifespan_preloads_range_data_and_identify_pipeline(monkeypatch) -> None:
+    calls = []
+
+    monkeypatch.setattr(
+        app_module,
+        "preload_inaturalist_open_range_data",
+        lambda: calls.append("range-data-loaded"),
+    )
+    monkeypatch.setattr(
+        app_module,
+        "get_identify_pipeline",
+        lambda: calls.append("pipeline-loaded"),
+    )
+
+    with TestClient(app):
+        pass
+
+    assert calls == ["range-data-loaded", "pipeline-loaded"]
 
 
 def test_identify_openapi_includes_upload_content_types() -> None:

@@ -5,12 +5,14 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from wild_catalog.core.settings import MDV6_APACHE_RTDETR_E_URL
 from wild_catalog.core.types import BoundingBox, Detection
 from wild_catalog.wildlife_detection.detector_base import Detector
 from wild_catalog.wildlife_detection.device import get_torch_device
 from wild_catalog.wildlife_detection.megadetector_factory import (
     get_megadetector_v6_factory,
 )
+from wild_catalog.wildlife_detection.model_download import download_file_with_progress
 from wild_catalog.wildlife_detection.pytorch_wildlife_stdout import (
     suppress_pytorch_wildlife_model_load_stdout,
 )
@@ -40,7 +42,9 @@ class MegaDetectorV6Detector(Detector):
     ) -> None:
         self.confidence_threshold = confidence_threshold
         self.device = device or get_torch_device()
-        self.model_weights = Path(model_weights) if model_weights is not None else None
+        self.model_weights = (
+            Path(model_weights) if model_weights is not None else DEFAULT_MODEL_PATH
+        )
         self.model_version = model_version
         self.model = model or self._load_model(model_factory)
 
@@ -55,14 +59,16 @@ class MegaDetectorV6Detector(Detector):
 
     def _load_model(self, model_factory: ModelFactory | None) -> Any:
         configure_torch_hub_dir(DEFAULT_TORCH_HUB_DIR)
+        if model_factory is None and self.model_weights == DEFAULT_MODEL_PATH:
+            download_file_with_progress(MDV6_APACHE_RTDETR_E_URL, self.model_weights)
+
         factory = model_factory or get_megadetector_v6_factory()
         kwargs: dict[str, Any] = {
             "device": self.device,
             "pretrained": True,
             "version": self.model_version,
+            "weights": str(self.model_weights),
         }
-        if self.model_weights is not None:
-            kwargs["weights"] = str(self.model_weights)
 
         with suppress_pytorch_wildlife_model_load_stdout():
             return factory(**kwargs)

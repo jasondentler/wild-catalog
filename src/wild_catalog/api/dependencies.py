@@ -18,6 +18,7 @@ def get_settings() -> Settings:
     return Settings.from_env()
 
 
+@lru_cache(maxsize=1)
 def get_identify_pipeline() -> IdentifyPipeline:
     settings = get_settings()
     conversion = ImageConversionService(settings)
