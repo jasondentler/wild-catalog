@@ -67,7 +67,10 @@ def test_identify_openapi_includes_upload_content_types() -> None:
         == {
             "original_filename": "IMG_7906.jpg",
             "exif_override": {
-                "gps_coordinates": "29.573361, -94.389507",
+                "gps_coordinates": {
+                    "latitude": 29.573361,
+                    "longitude": -94.389507,
+                },
                 "captured_at": "2026-05-01T12:30:00Z",
             },
             "return_detected_images": True,
@@ -89,7 +92,10 @@ def test_identify_openapi_includes_upload_content_types() -> None:
                 "payload": {
                     "original_filename": "IMG_7906.jpg",
                     "exif_override": {
-                        "gps_coordinates": "29.573361, -94.389507",
+                        "gps_coordinates": {
+                            "latitude": 29.573361,
+                            "longitude": -94.389507,
+                        },
                         "captured_at": "2026-05-01T12:30:00Z",
                     },
                     "return_detected_images": True,

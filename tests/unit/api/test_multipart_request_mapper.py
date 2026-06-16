@@ -19,6 +19,7 @@ from wild_catalog.core.errors import (
     InvalidGpsOverrideError,
     MalformedJsonPayloadError,
 )
+from wild_catalog.core.types import GpsCoordinates
 
 
 def make_request(*, content_language: str | None = None) -> Request:
@@ -69,12 +70,98 @@ def test_identify_request_to_command_merges_payload_and_upload_metadata() -> Non
     assert command.original_filename == "fallback.jpg"
     assert command.image_size_bytes == 4321
     assert command.exif_override is not None
-    assert command.exif_override.gps_coordinates == (29.573361, -94.389507)
+    assert command.exif_override.gps_coordinates == GpsCoordinates(
+        latitude=29.573361,
+        longitude=-94.389507,
+    )
     assert command.exif_override.captured_at == datetime(
         2026, 5, 1, 12, 30, tzinfo=UTC
     )
     assert command.return_detected_images is True
     assert command.common_name_language == "es-MX"
+
+
+def test_identify_request_to_command_accepts_gps_coordinate_object() -> None:
+    image = SimpleNamespace(filename="trail-camera.jpg", size=4321)
+    identify_request = IdentifyRequest.model_validate(
+        {
+            "original_filename": "trail-camera.jpg",
+            "exif_override": {
+                "gps_coordinates": {
+                    "latitude": 29.573361,
+                    "longitude": -94.389507,
+                },
+            },
+        }
+    )
+
+    command = __identify_request_to_command(make_request(), identify_request, image)
+
+    assert command.exif_override is not None
+    assert command.exif_override.gps_coordinates == GpsCoordinates(
+        latitude=29.573361,
+        longitude=-94.389507,
+    )
+
+
+def test_identify_request_to_command_accepts_dms_gps_coordinate_string() -> None:
+    image = SimpleNamespace(filename="trail-camera.jpg", size=4321)
+    identify_request = IdentifyRequest.model_validate(
+        {
+            "original_filename": "trail-camera.jpg",
+            "exif_override": {
+                "gps_coordinates": '29°34\'24.1"N, 94°23\'22.2"W',
+            },
+        }
+    )
+
+    command = __identify_request_to_command(make_request(), identify_request, image)
+
+    assert command.exif_override is not None
+    assert command.exif_override.gps_coordinates is not None
+    assert command.exif_override.gps_coordinates.latitude == pytest.approx(
+        29.57336111111111,
+    )
+    assert command.exif_override.gps_coordinates.longitude == pytest.approx(-94.3895)
+
+
+def test_identify_request_to_command_accepts_lightroom_dms_gps_string() -> None:
+    image = SimpleNamespace(filename="trail-camera.jpg", size=4321)
+    identify_request = IdentifyRequest.model_validate(
+        {
+            "original_filename": "trail-camera.jpg",
+            "exif_override": {
+                "gps_coordinates": '29°43\'7.806" N 95°37\'39.612" W',
+            },
+        }
+    )
+
+    command = __identify_request_to_command(make_request(), identify_request, image)
+
+    assert command.exif_override is not None
+    assert command.exif_override.gps_coordinates is not None
+    assert command.exif_override.gps_coordinates.latitude == pytest.approx(29.718835)
+    assert command.exif_override.gps_coordinates.longitude == pytest.approx(-95.62767)
+
+
+def test_identify_request_to_command_accepts_whitespace_separated_gps_string() -> None:
+    image = SimpleNamespace(filename="trail-camera.jpg", size=4321)
+    identify_request = IdentifyRequest.model_validate(
+        {
+            "original_filename": "trail-camera.jpg",
+            "exif_override": {
+                "gps_coordinates": "29.573361 -94.389507",
+            },
+        }
+    )
+
+    command = __identify_request_to_command(make_request(), identify_request, image)
+
+    assert command.exif_override is not None
+    assert command.exif_override.gps_coordinates == GpsCoordinates(
+        latitude=29.573361,
+        longitude=-94.389507,
+    )
 
 
 def test_get_stream_yields_chunks_until_eof() -> None:

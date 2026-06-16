@@ -116,7 +116,7 @@ The request body must be a JSON object containing information about the media up
 
 * `original_filename` (string, required): The exact name of the uploaded file.
 * `exif_override` (object, optional): Metadata values to supplement or replace the file's original data.
-  * `gps_coordinates` (string, optional): Latitude and longitude separated by a comma.
+  * `gps_coordinates` (object or string, optional): Prefer an object with `latitude` and `longitude` numbers. String values may use decimal degrees or degrees/minutes/seconds. A comma between latitude and longitude is optional when the two coordinates can be separated by whitespace and/or cardinal directions.
   * `captured_at` (string, optional): The date and time the photo was taken in ISO 8601 format.
 * `return_detected_images` (boolean, optional): Set to `true` to include cropped images of detected subjects in the response. Defaults to `false`.
 * `common_name_language` (string, optional): Locale code for returned common names. Defaults to `en-US`.
@@ -138,8 +138,28 @@ The request body must be a JSON object containing information about the media up
       "type": "object",
       "properties": {
         "gps_coordinates": {
-          "type": "string",
-          "pattern": "^-?\\d+\\.\\d+,\\s*-?\\d+\\.\\d+\$"
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "latitude": {
+                  "type": "number"
+                },
+                "longitude": {
+                  "type": "number"
+                }
+              },
+              "required": ["latitude", "longitude"]
+            },
+            {
+              "type": "string",
+              "examples": [
+                "37.7749,-122.4194",
+                "37.7749 -122.4194",
+                "37°46'29.6\"N 122°25'9.8\"W"
+              ]
+            }
+          ]
         },
         "captured_at": {
           "type": "string",
@@ -171,7 +191,10 @@ Note: the JSON schema above mirrors the example payload shape used in the OpenAP
 {
   "original_filename": "dsc_0432.jpg",
   "exif_override": {
-    "gps_coordinates": "37.7749,-122.4194",
+    "gps_coordinates": {
+      "latitude": 37.7749,
+      "longitude": -122.4194
+    },
     "captured_at": "2026-06-02T05:39:00Z"
   },
   "return_detected_images": true,

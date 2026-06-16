@@ -3,7 +3,11 @@ from collections.abc import AsyncGenerator
 from fastapi import Request, UploadFile
 from pydantic import ValidationError
 
-from wild_catalog.api.request_models import IdentifyRequest
+from wild_catalog.api.request_models import (
+    GpsCoordinatesRequest,
+    IdentifyRequest,
+    parse_gps_coordinate_string,
+)
 from wild_catalog.api.simple_request_mapper import parse_content_language_header
 from wild_catalog.core.errors import (
     ImagePartMissingError,
@@ -87,18 +91,36 @@ def __identify_request_to_command(
     )
 
 
-def _parse_gps_coordinates(value: str | None) -> GpsCoordinates | None:
+def _parse_gps_coordinates(
+    value: GpsCoordinatesRequest | str | None,
+) -> GpsCoordinates | None:
     if value is None:
         return None
 
-    latitude, longitude = value.split(",")
-    return float(latitude.strip()), float(longitude.strip())
+    if isinstance(value, GpsCoordinatesRequest):
+        return GpsCoordinates(
+            latitude=value.latitude,
+            longitude=value.longitude,
+        )
+
+    latitude, longitude = parse_gps_coordinate_string(value)
+    return GpsCoordinates(
+        latitude=latitude,
+        longitude=longitude,
+    )
 
 
 def _is_gps_override_validation_error(error: ValidationError) -> bool:
     return any(
-        tuple(validation_error["loc"])[-2:] == ("exif_override", "gps_coordinates")
+        _contains_gps_override_location(tuple(validation_error["loc"]))
         for validation_error in error.errors()
+    )
+
+
+def _contains_gps_override_location(location: tuple[object, ...]) -> bool:
+    return any(
+        location[index : index + 2] == ("exif_override", "gps_coordinates")
+        for index in range(len(location) - 1)
     )
 
 

@@ -5,7 +5,10 @@ import json
 IDENTIFY_PAYLOAD_EXAMPLE = {
     "original_filename": "IMG_7906.jpg",
     "exif_override": {
-        "gps_coordinates": "29.573361, -94.389507",
+        "gps_coordinates": {
+            "latitude": 29.573361,
+            "longitude": -94.389507,
+        },
         "captured_at": "2026-05-01T12:30:00Z",
     },
     "return_detected_images": True,
