@@ -1,6 +1,6 @@
 # Wild Catalog
 
-Wild Catalog is an open-source tool that looks at nature photos and automatically figures out what animals, plants, and fungi are in them. It identifies the species, traces their scientific family tree, and looks up their common names. Built to power the [Crush-Catalog Lightroom plugin](https://github.com/jasondentler/crush-catalog), it lets you easily search, sort, and catalog wildlife pictures.
+Wild Catalog is an open-source tool that looks at nature photos and automatically figures out what animals are in them. It identifies the species, traces their scientific family tree, and looks up their common names. Built to power the [Crush-Catalog Lightroom plugin](https://github.com/jasondentler/crush-catalog), it lets you easily search, sort, and catalog wildlife pictures.
 
 ## Table of Contents
 

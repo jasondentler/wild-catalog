@@ -8,7 +8,7 @@ from wild_catalog.api.request_models import (
     IdentifyRequest,
     parse_gps_coordinate_string,
 )
-from wild_catalog.api.simple_request_mapper import parse_content_language_header
+from wild_catalog.api.simple_request_mapper import parse_accept_language_header
 from wild_catalog.core.errors import (
     ImagePartMissingError,
     InvalidGpsOverrideError,
@@ -57,7 +57,7 @@ def __identify_request_to_command(
     identify_request: IdentifyRequest | None,
     image: UploadFile,
 ) -> IdentifyCommand:
-    content_language = request.headers.get("content-language")
+    accept_language = request.headers.get("accept-language")
 
     original_filename = image.filename
     if original_filename is None and identify_request is not None:
@@ -67,10 +67,13 @@ def __identify_request_to_command(
 
     common_name_language: str | None = None
 
-    if identify_request and identify_request.common_name_language:
+    if (
+        identify_request
+        and "common_name_language" in identify_request.model_fields_set
+    ):
         common_name_language = identify_request.common_name_language
     else:
-        common_name_language = parse_content_language_header(content_language)
+        common_name_language = parse_accept_language_header(accept_language)
 
     if identify_request and identify_request.exif_override:
         exif_override = ExifOverride(

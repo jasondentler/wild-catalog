@@ -76,10 +76,10 @@ Supported direct upload formats:
 For direct image uploads, also include:
 
 * `x-filename` (optional): the original filename to use if the upload is not multipart. If omitted, the server will fall back to the multipart filename when available or leave it unset.
-* `content-language`: optional fallback language for common names
+* `accept-language`: optional, language for common names
 * `content-length`: required for `POST`, `PUT`, and `PATCH` requests so the upload size limiter can reject oversized requests before image parsing begins
 
-`content-language` accepts a language tag or comma-separated weighted list. The highest-weight tag is used when no `common_name_language` is supplied in the multipart payload.
+`accept-language` accepts a language tag or comma-separated weighted list. The highest-weight tag is used when no `common_name_language` is supplied in the multipart payload. When unavailable, the scientific name is reused.
 
 You may also send a `multipart/form-data` request containing these parts:
 
@@ -231,6 +231,7 @@ The root response payload is a JSON object.
   * `confidence` (number): Prediction score from `0.0` to `1.0`.
   * `is_present` (boolean): Indicates whether the prediction is considered present.
   * `taxonomy` (array of strings): Scientific taxonomic lineage ordered from highest rank to lowest rank.
+  * `taxonomy_rank_names` (array of strings): Taxonomic rank names matching the taxonomy array.
   * `taxonomy_common_names` (array of strings): Localized common names matching the taxonomy ranks.
 
 ---
@@ -274,6 +275,15 @@ The root response payload is a JSON object.
             "Cyanocitta",
             "Cyanocitta cristata"
           ],
+          "taxonomy_rank_names": [
+            "kingdom",
+            "phylum",
+            "class",
+            "order",
+            "family",
+            "genus",
+            "species"
+          ],
           "taxonomy_common_names": [
             "Animals",
             "Chordates",
@@ -295,6 +305,15 @@ The root response payload is a JSON object.
             "Mimidae",
             "Mimus",
             "Mimus polyglottos"
+          ],
+          "taxonomy_rank_names": [
+            "kingdom",
+            "phylum",
+            "class",
+            "order",
+            "family",
+            "genus",
+            "species"
           ],
           "taxonomy_common_names": [
             "Animals",
@@ -359,6 +378,15 @@ Content-Type: application/json
             "Cyanocitta",
             "Cyanocitta cristata"
           ],
+          "taxonomy_rank_names": [
+            "kingdom",
+            "phylum",
+            "class",
+            "order",
+            "family",
+            "genus",
+            "species"
+          ],
           "taxonomy_common_names": [
             "Animals",
             "Chordates",
@@ -380,6 +408,15 @@ Content-Type: application/json
             "Mimidae",
             "Mimus",
             "Mimus polyglottos"
+          ],
+          "taxonomy_rank_names": [
+            "kingdom",
+            "phylum",
+            "class",
+            "order",
+            "family",
+            "genus",
+            "species"
           ],
           "taxonomy_common_names": [
             "Animals",

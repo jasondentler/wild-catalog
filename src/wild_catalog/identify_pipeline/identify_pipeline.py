@@ -58,6 +58,7 @@ class IdentifyPipeline:
                 normalized_image,
                 detection,
                 gps_coordinates,
+                common_name_language=command.common_name_language,
             )
             for detection in deduplicated_detections
         )

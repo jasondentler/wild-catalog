@@ -140,6 +140,7 @@ def test_birder_species_classifier_returns_top_k_predictions() -> None:
     assert calls[0][0][2] is transform
     assert calls[0][1] == {"device": classifier.device}
     assert [prediction.class_id for prediction in predictions] == [1, 2]
+    assert [prediction.taxon_id for prediction in predictions] == [1, 2]
     assert [prediction.confidence for prediction in predictions] == [0.78, 0.43]
     assert [prediction.taxonomy for prediction in predictions] == [
         ("american robin",),

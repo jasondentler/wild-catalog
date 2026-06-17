@@ -132,6 +132,10 @@ class BirderSpeciesClassifier(Classifier):
                     self._idx_to_class.get(int(class_id), str(class_id)),
                 ),
                 class_id=int(class_id),
+                taxon_id=self.class_index.taxon_id_by_class_id.get(
+                    int(class_id),
+                    -1,
+                ),
             )
             for class_id in top_indices
         ]

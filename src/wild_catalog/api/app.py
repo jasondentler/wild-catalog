@@ -25,6 +25,7 @@ from wild_catalog.core.settings import Settings
 from wild_catalog.identify_pipeline.identify_command import IdentifyCommand
 from wild_catalog.identify_pipeline.identify_pipeline import IdentifyPipeline
 from wild_catalog.range_data import import_inaturalist_open_range_data_if_missing
+from wild_catalog.taxonomy import import_taxonomy_archive_if_missing
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -41,9 +42,19 @@ def preload_inaturalist_open_range_data() -> None:
     )
 
 
+def preload_inaturalist_taxonomy_data() -> None:
+    settings = get_settings()
+    import_taxonomy_archive_if_missing(
+        settings.taxonomy_store_database_path,
+        settings.taxonomy_archive_download_dir,
+        languages=settings.taxonomy_languages,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _ = app
+    preload_inaturalist_taxonomy_data()
     preload_inaturalist_open_range_data()
     preload_identify_pipeline()
     yield

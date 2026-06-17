@@ -110,6 +110,7 @@ def _map_prediction(prediction: Prediction) -> PredictionResponse:
         confidence=prediction.confidence,
         is_present=prediction.is_present,
         taxonomy=list(prediction.taxonomy),
+        taxonomy_rank_names=list(prediction.taxonomy_rank_names),
         taxonomy_common_names=list(prediction.taxonomy_common_names),
     )
 

@@ -50,6 +50,12 @@ class _Classifier:
         ]
 
 
+class _TaxonomyService:
+    def enrich_predictions(self, predictions, *, common_name_language):
+        _ = common_name_language
+        return tuple(predictions)
+
+
 def test_identify_pipeline_reads_stream_and_forwards_exif_override() -> None:
     async def run():
         conversion = _Conversion()
@@ -60,6 +66,7 @@ def test_identify_pipeline_reads_stream_and_forwards_exif_override() -> None:
             detection_processing_pipeline=DetectionProcessingPipeline(
                 ImageCropper(Settings()),
                 _Classifier(),
+                taxonomy_service=_TaxonomyService(),
             ),
         )
         command = IdentifyCommand(
@@ -131,6 +138,7 @@ def test_identify_pipeline_deduplicates_detected_objects() -> None:
             detection_processing_pipeline=DetectionProcessingPipeline(
                 ImageCropper(Settings()),
                 _Classifier(),
+                taxonomy_service=_TaxonomyService(),
             ),
         )
 
@@ -180,6 +188,7 @@ def test_identify_pipeline_uses_injected_detection_deduplicator() -> None:
             detection_processing_pipeline=DetectionProcessingPipeline(
                 ImageCropper(Settings()),
                 _Classifier(),
+                taxonomy_service=_TaxonomyService(),
             ),
         )
 
@@ -217,8 +226,16 @@ def test_identify_pipeline_uses_injected_detection_processing_pipeline() -> None
         processing_calls = []
         conversion = _Conversion(SimpleNamespace(image=image))
 
-        def process(received_image, detection, gps_coordinates=None):
-            processing_calls.append((received_image, detection, gps_coordinates))
+        def process(
+            received_image,
+            detection,
+            gps_coordinates=None,
+            *,
+            common_name_language="en-US",
+        ):
+            processing_calls.append(
+                (received_image, detection, gps_coordinates, common_name_language)
+            )
             return IdentifiedObject(
                 bounding_box=detection.box,
                 bounding_box_with_margin=detection.box,
@@ -247,12 +264,15 @@ def test_identify_pipeline_uses_injected_detection_processing_pipeline() -> None
             yield b"abc"
 
         result = await pipeline.execute(
-            IdentifyCommand(original_filename="image.jpg"),
+            IdentifyCommand(
+                original_filename="image.jpg",
+                common_name_language="es-MX",
+            ),
             stream(),
         )
         return result, processing_calls, retained_detection, image
 
     result, processing_calls, retained_detection, image = asyncio.run(run())
 
-    assert processing_calls == [(image, retained_detection, None)]
+    assert processing_calls == [(image, retained_detection, None, "es-MX")]
     assert result.objects[0].bounding_box == retained_detection.box

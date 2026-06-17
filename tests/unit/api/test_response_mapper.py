@@ -44,6 +44,14 @@ def test_map_response_serializes_identify_result_objects() -> None:
                             "Corvidae",
                             "Cyanocitta cristata",
                         ),
+                        taxonomy_rank_names=(
+                            "kingdom",
+                            "phylum",
+                            "class",
+                            "order",
+                            "family",
+                            "species",
+                        ),
                         taxonomy_common_names=(
                             "Animals",
                             "Chordates",
@@ -101,6 +109,14 @@ def test_map_response_serializes_identify_result_objects() -> None:
                             "Passeriformes",
                             "Corvidae",
                             "Cyanocitta cristata",
+                        ],
+                        "taxonomy_rank_names": [
+                            "kingdom",
+                            "phylum",
+                            "class",
+                            "order",
+                            "family",
+                            "species",
                         ],
                         "taxonomy_common_names": [
                             "Animals",

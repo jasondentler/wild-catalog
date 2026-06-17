@@ -5,7 +5,7 @@ from starlette.requests import Request
 
 from wild_catalog.api.simple_request_mapper import (
     create_request_body_command,
-    parse_content_language_header,
+    parse_accept_language_header,
 )
 from wild_catalog.core.errors import (
     ContentLengthHeaderIsNotNumberError,
@@ -14,7 +14,7 @@ from wild_catalog.core.errors import (
 
 
 @pytest.mark.parametrize(
-    "content_language, expected",
+    "accept_language, expected",
     [
         (None, None),
         ("en-US", "en-US"),
@@ -23,15 +23,15 @@ from wild_catalog.core.errors import (
         ("en-US; q=0.8", "en-US"),
     ],
 )
-def test_parse_content_language_header_returns_best_match(
-    content_language: str | None,
+def test_parse_accept_language_header_returns_best_match(
+    accept_language: str | None,
     expected: str | None,
 ) -> None:
-    assert parse_content_language_header(content_language) == expected
+    assert parse_accept_language_header(accept_language) == expected
 
 
 @pytest.mark.parametrize(
-    "content_language",
+    "accept_language",
     [
         "",
         ",",
@@ -40,14 +40,14 @@ def test_parse_content_language_header_returns_best_match(
         " ; q=0.8, ",
     ],
 )
-def test_parse_content_language_header_rejects_invalid_values(
-    content_language: str,
+def test_parse_accept_language_header_rejects_invalid_values(
+    accept_language: str,
 ) -> None:
     with pytest.raises(InvalidContentLanguageError):
-        parse_content_language_header(content_language)
+        parse_accept_language_header(accept_language)
 
 
-def test_create_request_body_command_rejects_invalid_content_language_header() -> None:
+def test_create_request_body_command_rejects_invalid_accept_language_header() -> None:
     async def receive() -> dict[str, object]:
         return {"type": "http.request", "body": b"", "more_body": False}
 
@@ -56,7 +56,7 @@ def test_create_request_body_command_rejects_invalid_content_language_header() -
             "type": "http",
             "method": "POST",
             "path": "/identify",
-            "headers": [(b"content-language", b"en-US;q=bad")],
+            "headers": [(b"accept-language", b"en-US;q=bad")],
         },
         receive,
     )
@@ -100,3 +100,23 @@ def test_create_request_body_command_accepts_missing_headers() -> None:
     command, _ = asyncio.run(create_request_body_command(request))
 
     assert command.image_size_bytes is None
+    assert command.common_name_language == "en-US"
+
+
+def test_create_request_body_command_uses_accept_language_header() -> None:
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/identify",
+            "headers": [(b"accept-language", b"en-US;q=0.8, es-MX;q=0.9")],
+        },
+        receive,
+    )
+
+    command, _ = asyncio.run(create_request_body_command(request))
+
+    assert command.common_name_language == "es-MX"

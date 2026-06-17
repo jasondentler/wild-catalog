@@ -31,6 +31,11 @@ def test_lifespan_preloads_range_data_and_identify_pipeline(monkeypatch) -> None
 
     monkeypatch.setattr(
         app_module,
+        "preload_inaturalist_taxonomy_data",
+        lambda: calls.append("taxonomy-data-loaded"),
+    )
+    monkeypatch.setattr(
+        app_module,
         "preload_inaturalist_open_range_data",
         lambda: calls.append("range-data-loaded"),
     )
@@ -43,7 +48,7 @@ def test_lifespan_preloads_range_data_and_identify_pipeline(monkeypatch) -> None
     with TestClient(app):
         pass
 
-    assert calls == ["range-data-loaded", "pipeline-loaded"]
+    assert calls == ["taxonomy-data-loaded", "range-data-loaded", "pipeline-loaded"]
 
 
 def test_identify_openapi_includes_upload_content_types() -> None:

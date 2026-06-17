@@ -31,6 +31,13 @@ DEFAULTS = {
     "WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR": Path(
         "data/range-data/geopackages"
     ),
+    "WILD_CATALOG_TAXONOMY_STORE_DATABASE_PATH": Path(
+        "data/taxonomy/inaturalist-taxonomy-store.sqlite"
+    ),
+    "WILD_CATALOG_TAXONOMY_ARCHIVE_DOWNLOAD_DIR": Path(
+        "data/taxonomy"
+    ),
+    "WILD_CATALOG_LANGUAGES": ("en-US",),
 }
 
 
@@ -63,6 +70,13 @@ class Settings:
     range_geopackage_download_dir: Path = DEFAULTS[
         "WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR"
     ]
+    taxonomy_store_database_path: Path = DEFAULTS[
+        "WILD_CATALOG_TAXONOMY_STORE_DATABASE_PATH"
+    ]
+    taxonomy_archive_download_dir: Path = DEFAULTS[
+        "WILD_CATALOG_TAXONOMY_ARCHIVE_DOWNLOAD_DIR"
+    ]
+    taxonomy_languages: tuple[str, ...] = DEFAULTS["WILD_CATALOG_LANGUAGES"]
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -96,6 +110,13 @@ class Settings:
             range_geopackage_download_dir=cls._get_path_value(
                 "WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR"
             ),
+            taxonomy_store_database_path=cls._get_path_value(
+                "WILD_CATALOG_TAXONOMY_STORE_DATABASE_PATH"
+            ),
+            taxonomy_archive_download_dir=cls._get_path_value(
+                "WILD_CATALOG_TAXONOMY_ARCHIVE_DOWNLOAD_DIR"
+            ),
+            taxonomy_languages=cls._get_csv_tuple_value("WILD_CATALOG_LANGUAGES"),
         )
 
     @staticmethod
@@ -118,3 +139,14 @@ class Settings:
     @staticmethod
     def _get_path_value(key: str) -> Path:
         return Path(Settings._get_str_value(key))
+
+    @staticmethod
+    def _get_csv_tuple_value(key: str) -> tuple[str, ...]:
+        value = os.getenv(key)
+        if value is None:
+            default = DEFAULTS[key]
+            if isinstance(default, tuple):
+                return default
+            return (str(default),)
+
+        return tuple(item.strip() for item in value.split(",") if item.strip())

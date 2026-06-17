@@ -27,6 +27,8 @@ The default detector is `WildlifeDetector`, an alias for `MegaDetectorV6Detector
 
 `MegaDetectorV6Detector` is an adapter around PyTorch-Wildlife MegaDetector v6. It prefers the Apache RT-DETR implementation exposed by PyTorch-Wildlife as `MegaDetectorV6Apache`, using the `MDV6-apa-rtdetr-e` model version by default.
 
+MegaDetector v6 localizes broad subjects in the `animal`, `person`, and `vehicle` classes. The downstream species classifier is only run on retained detections from this localization stage.
+
 The detector implementation is behind the `Detector` interface so a different localization backend can be swapped in without changing the identify pipeline.
 
 The detector package is split by responsibility:

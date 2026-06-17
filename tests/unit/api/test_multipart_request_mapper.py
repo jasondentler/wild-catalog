@@ -22,13 +22,13 @@ from wild_catalog.core.errors import (
 from wild_catalog.core.types import GpsCoordinates
 
 
-def make_request(*, content_language: str | None = None) -> Request:
+def make_request(*, accept_language: str | None = None) -> Request:
     async def receive() -> dict[str, object]:
         return {"type": "http.request", "body": b"", "more_body": False}
 
     headers = []
-    if content_language is not None:
-        headers.append((b"content-language", content_language.encode()))
+    if accept_language is not None:
+        headers.append((b"accept-language", accept_language.encode()))
 
     return Request(
         {
@@ -78,6 +78,19 @@ def test_identify_request_to_command_merges_payload_and_upload_metadata() -> Non
         2026, 5, 1, 12, 30, tzinfo=UTC
     )
     assert command.return_detected_images is True
+    assert command.common_name_language == "es-MX"
+
+
+def test_identify_request_to_command_uses_accept_language_when_payload_language_missing() -> None:
+    image = SimpleNamespace(filename="trail-camera.jpg", size=1234)
+    identify_request = IdentifyRequest(original_filename="trail-camera.jpg")
+
+    command = __identify_request_to_command(
+        make_request(accept_language="en-US;q=0.8, es-MX;q=0.9"),
+        identify_request,
+        image,
+    )
+
     assert command.common_name_language == "es-MX"
 
 

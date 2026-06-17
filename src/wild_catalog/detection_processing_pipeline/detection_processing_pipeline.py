@@ -6,6 +6,7 @@ from wild_catalog.image_cropper.image_cropping import ImageCropper
 from wild_catalog.logit_conditioning.logit_conditioner import LogitConditioner
 from wild_catalog.range_data.species_range_prior_service import SpeciesRangePriorService
 from wild_catalog.species_classifier.classifier_base import Classifier
+from wild_catalog.taxonomy import TaxonomyService
 
 
 class DetectionProcessingPipeline:
@@ -16,17 +17,24 @@ class DetectionProcessingPipeline:
         *,
         range_prior_service: SpeciesRangePriorService | None = None,
         logit_conditioner: LogitConditioner | None = None,
+        taxonomy_service: TaxonomyService | None,
     ) -> None:
+        if taxonomy_service is None:
+            raise ValueError("taxonomy_service is required.")
+
         self._cropper = cropper
         self._classifier = classifier
         self._range_prior_service = range_prior_service
         self._logit_conditioner = logit_conditioner
+        self._taxonomy_service = taxonomy_service
 
     def process(
         self,
         image: Image.Image,
         detection: Detection,
         gps_coordinates: GpsCoordinates | None = None,
+        *,
+        common_name_language: str = "en-US",
     ) -> IdentifiedObject:
         crop_result = self._cropper.crop(image, detection)
         predictions = tuple(
@@ -34,6 +42,10 @@ class DetectionProcessingPipeline:
                 crop_result.cropped_image,
                 gps_coordinates,
             )
+        )
+        predictions = self._taxonomy_service.enrich_predictions(
+            predictions,
+            common_name_language=common_name_language,
         )
 
         return IdentifiedObject(

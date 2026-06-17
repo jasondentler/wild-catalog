@@ -1,3 +1,4 @@
+import pytest
 import torch
 from PIL import Image
 
@@ -66,6 +67,43 @@ class _RangePriorService:
         )
 
 
+class _TaxonomyService:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def enrich_predictions(self, predictions, *, common_name_language):
+        self.calls.append((predictions, common_name_language))
+        return tuple(predictions)
+
+
+class _EnrichingTaxonomyService:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def enrich_predictions(self, predictions, *, common_name_language):
+        self.calls.append((predictions, common_name_language))
+        return tuple(
+            Prediction(
+                confidence=prediction.confidence,
+                is_present=prediction.is_present,
+                taxonomy=("Animalia", "Aythya"),
+                taxonomy_common_names=("Animales", "Patos buceadores"),
+                class_id=prediction.class_id,
+                taxon_id=prediction.taxon_id,
+            )
+            for prediction in predictions
+        )
+
+
+def test_detection_processing_pipeline_requires_taxonomy_service() -> None:
+    with pytest.raises(ValueError, match="taxonomy_service is required"):
+        DetectionProcessingPipeline(
+            ImageCropper(Settings()),
+            _Classifier([]),
+            taxonomy_service=None,
+        )
+
+
 def test_detection_processing_pipeline_crops_detection_and_classifies_crop() -> None:
     image = Image.new("RGB", (100, 120), color=(255, 0, 0))
     detection = Detection(
@@ -94,6 +132,7 @@ def test_detection_processing_pipeline_crops_detection_and_classifies_crop() -> 
             )
         ),
         classifier,
+        taxonomy_service=_TaxonomyService(),
     ).process(image, detection)
 
     assert result.bounding_box == detection.box
@@ -106,6 +145,46 @@ def test_detection_processing_pipeline_crops_detection_and_classifies_crop() -> 
     assert result.cropped_image.size == (19, 30)
     assert classifier.calls == [result.cropped_image]
     assert result.predictions == tuple(classifier.predictions)
+
+
+def test_detection_processing_pipeline_enriches_predictions_with_requested_language() -> None:
+    image = Image.new("RGB", (100, 120), color=(255, 0, 0))
+    detection = Detection(
+        box=BoundingBox(xmin=1, ymin=2, xmax=11, ymax=22),
+        confidence=0.87,
+        class_id=3,
+        label="animal",
+    )
+    classifier = _Classifier(
+        [
+            Prediction(
+                confidence=0.72,
+                is_present=True,
+                taxonomy=("mallard",),
+                taxonomy_common_names=("mallard",),
+                class_id=17,
+                taxon_id=6930,
+            )
+        ]
+    )
+    taxonomy_service = _EnrichingTaxonomyService()
+
+    result = DetectionProcessingPipeline(
+        ImageCropper(Settings()),
+        classifier,
+        taxonomy_service=taxonomy_service,
+    ).process(
+        image,
+        detection,
+        common_name_language="es-MX",
+    )
+
+    assert taxonomy_service.calls == [(tuple(classifier.predictions), "es-MX")]
+    assert result.predictions[0].taxonomy == ("Animalia", "Aythya")
+    assert result.predictions[0].taxonomy_common_names == (
+        "Animales",
+        "Patos buceadores",
+    )
 
 
 def test_detection_processing_pipeline_returns_empty_predictions_when_classifier_has_none() -> None:
@@ -126,6 +205,7 @@ def test_detection_processing_pipeline_returns_empty_predictions_when_classifier
             )
         ),
         classifier,
+        taxonomy_service=_TaxonomyService(),
     ).process(image, detection)
 
     assert result.predictions == ()
@@ -153,6 +233,7 @@ def test_detection_processing_pipeline_applies_range_prior_when_gps_is_available
         classifier,
         range_prior_service=range_prior_service,
         logit_conditioner=LogitConditioner(gamma=2.0, epsilon=1e-12, top_k=2),
+        taxonomy_service=_TaxonomyService(),
     ).process(image, detection, gps_coordinates)
 
     assert classifier.classify_calls == []
@@ -181,6 +262,7 @@ def test_detection_processing_pipeline_uses_classifier_when_gps_is_missing() -> 
         ),
         classifier,
         range_prior_service=_RangePriorService(),
+        taxonomy_service=_TaxonomyService(),
     ).process(image, detection)
 
     assert classifier.classify_calls == [result.cropped_image]
