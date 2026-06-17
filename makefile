@@ -1,4 +1,4 @@
-.PHONY: all clean venv install install-hooks license-check lint lint-fix test test-fast check-prereqs serve pr commit preop preop-taxonomy-dwca preop-range-maps preop-classifier-model preop-detector-model
+.PHONY: all clean venv install install-hooks license-check third-party-notices lint lint-fix test test-fast check-prereqs serve pr commit preop preop-taxonomy-dwca preop-range-maps preop-classifier-model preop-detector-model
 
 # 1. Detect Operating System and set path/variable rules
 ifeq ($(OS),Windows_NT)
@@ -58,7 +58,10 @@ install-hooks:
 	$(VENV_BIN)/pre-commit install --hook-type commit-msg
 
 license-check:
-	$(VENV_BIN)/licensecheck --license Apache-2.0 --zero --show-only-failing
+	$(VENV_BIN)/licensecheck --license Apache-2.0 --zero --show-only-failing --requirements-paths pyproject.toml
+
+third-party-notices:
+	$(VENV_BIN)/python scripts/update_third_party_notices.py
 	
 # 6. Lint everything using Ruff
 lint:
