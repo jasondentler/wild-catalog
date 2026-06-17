@@ -179,7 +179,7 @@ make license-check
 
 If `licensecheck` reports dependencies that `uv` is intentionally overriding, verify the installed environment with `pip check` and review the resolver configuration in `pyproject.toml` before changing license policy.
 
-When the installed dependency set changes, regenerate [third-party-notices.md](../third-party-notices.md):
+When the installed dependency set changes, regenerate [third-party-notices.md](./third-party-notices.md):
 
 ```bash
 make third-party-notices
@@ -196,7 +196,7 @@ Once your environment is built via the initial [`make`](https://www.gnu.org/soft
 *   **`make test`** — Runs the full test suite, including end-to-end integration checks.
 *   **`make lint`** — Runs code linting checks using [Ruff](https://ruff.rs/).
 *   **`make lint-fix`** — Automatically fixes safe code style errors and organizes imports.
-*   **`make third-party-notices`** — Regenerates [third-party-notices.md](../third-party-notices.md) from the installed dependency metadata.
+*   **`make third-party-notices`** — Regenerates [third-party-notices.md](./third-party-notices.md) from the installed dependency metadata.
 *   **`make clean`** — Wipes generated local state, including `.venv` and `data/`, if you need to perform a fresh reinstall.
 
 
