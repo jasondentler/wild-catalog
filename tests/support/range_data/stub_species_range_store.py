@@ -1,5 +1,4 @@
-from collections.abc import Iterable
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 from wild_catalog.range_data.species_range_store import SpeciesRangeStore
 
