@@ -1,4 +1,4 @@
-.PHONY: all clean venv install install-hooks license-check third-party-notices lint lint-fix test test-fast check-prereqs serve pr commit preop preop-taxonomy-dwca preop-range-maps preop-classifier-model preop-detector-model
+.PHONY: all clean venv install install-ci install-hooks license-check third-party-notices lint lint-fix test test-fast check-prereqs serve pr commit preop preop-taxonomy-dwca preop-range-maps preop-classifier-model preop-detector-model
 
 # 1. Detect Operating System and set path/variable rules
 ifeq ($(OS),Windows_NT)
@@ -9,9 +9,13 @@ ifeq ($(OS),Windows_NT)
     SET_ENV := set WILD_CATALOG_RUN_INTEGRATION_TESTS=1 &&
 	RM_RF := rmdir /s /q
 else
-    # macOS Settings
+    UNAME_S := $(shell uname -s)
     PYTHON_EXE := $(shell which python3.13 2>/dev/null)
-    XCODE_CHECK := $(shell xcode-select -p 2>/dev/null)
+    ifeq ($(UNAME_S),Darwin)
+        XCODE_CHECK := $(shell xcode-select -p 2>/dev/null)
+    else
+        XCODE_CHECK := bypassed
+    endif
     VENV_BIN := .venv/bin
     SET_ENV := WILD_CATALOG_RUN_INTEGRATION_TESTS=1
     RM_RF := rm -rf
@@ -54,11 +58,18 @@ install:
 	$(VENV_BIN)/python -m pip install uv
 	$(VENV_BIN)/uv pip install -e ".[dev]"
 
+install-ci:
+	$(VENV_BIN)/python -m pip install --upgrade pip "setuptools<82" wheel
+	$(VENV_BIN)/python -m pip install uv
+	UV_CACHE_DIR=.uv-cache $(VENV_BIN)/uv pip install torch torchvision torchaudio --torch-backend cpu
+	UV_CACHE_DIR=.uv-cache $(VENV_BIN)/uv pip install -e ".[dev]" --torch-backend cpu
+
 install-hooks:
 	$(VENV_BIN)/pre-commit install --hook-type commit-msg
 
 license-check:
-	$(VENV_BIN)/licensecheck --license Apache-2.0 --zero --show-only-failing --requirements-paths pyproject.toml
+	# ultralytics and yolov5 are optional PyTorch-Wildlife imports that are excluded from runtime resolution.
+	PATH="$(VENV_BIN):$(PATH)" UV_TORCH_BACKEND=cpu $(VENV_BIN)/licensecheck --license Apache-2.0 --zero --show-only-failing --requirements-paths pyproject.toml --skip-dependencies ultralytics yolov5 --ignore-packages ultralytics yolov5
 
 third-party-notices:
 	$(VENV_BIN)/python scripts/update_third_party_notices.py

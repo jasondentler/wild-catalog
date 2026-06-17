@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Free Disk Space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 30720
+          swap-size-mb: 1024
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          remove-codeql: "true"
+          remove-docker-images: "true"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Debug Checkout
+        run: |
+          pwd
+          ls -la
+          git ls-files | sort | sed -n '1,120p'
+          sed -n '1,140p' makefile
+          make -qp | sed -n '/^venv:/,/^$/p'
+
+      - name: Build and Validate Project
+        run: |
+          make venv
+          make install-ci
+          make license-check
+          make lint
+
+      - name: Cache Detector Model
+        id: cache-detector-model
+        uses: actions/cache@v4
+        with:
+          path: data/models/MDV6-apa-rtdetr-e.pth
+          key: ${{ runner.os }}-models-${{ hashFiles('pyproject.toml') }}
+
+      - name: Cache Range GeoPackages
+        id: cache-range-geopackages
+        uses: actions/cache@v4
+        with:
+          path: data/range-data/geopackages/
+          key: ${{ runner.os }}-range-geopackages-${{ hashFiles('pyproject.toml') }}
+
+      - name: Cache Classifier Model
+        id: cache-classifier-model
+        uses: actions/cache@v4
+        with:
+          path: data/models/hieradet_d_small_dino-v2-inat21.pt
+          key: ${{ runner.os }}-classifier-model-${{ hashFiles('pyproject.toml') }}
+
+      - name: Cache Taxonomy DWCA Archive
+        id: cache-taxonomy-dwca
+        uses: actions/cache@v4
+        with:
+          path: data/taxonomy/inaturalist-taxonomy.dwca.zip
+          key: ${{ runner.os }}-taxonomy-dwca-${{ hashFiles('pyproject.toml') }}
+
+      - name: Run Taxonomy DWCA Pre-operational Setup
+        run: |
+          make preop-taxonomy-dwca
+
+      - name: Run Range GeoPackage Pre-operational Setup
+        if: steps.cache-range-geopackages.outputs.cache-hit != 'true'
+        run: |
+          make preop-range-maps
+
+      - name: Run Classifier Model Pre-operational Setup
+        if: steps.cache-classifier-model.outputs.cache-hit != 'true'
+        run: |
+          make preop-classifier-model
+
+      - name: Run Detector Model Pre-operational Setup
+        if: steps.cache-detector-model.outputs.cache-hit != 'true'
+        run: |
+          make preop-detector-model
+
+      - name: Run Complete Test Suite
+        run: make test
