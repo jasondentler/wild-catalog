@@ -154,7 +154,7 @@ def test_import_geopackages_creates_store_rebuilds_rtree_and_stores_metadata(tmp
     assert taxon_rows == [(12345, "Agelaius phoeniceus")]
 
 
-def test_import_inaturalist_open_range_data_backfills_taxa_for_existing_database(
+def test_import_inaturalist_open_range_data_skips_existing_database_without_backfill(
     tmp_path,
 ) -> None:
     target_database_path = tmp_path / "range-store.sqlite"
@@ -192,8 +192,8 @@ def test_import_inaturalist_open_range_data_backfills_taxa_for_existing_database
 
     assert rows_imported == 0
     with closing(sqlite3.connect(target_database_path)) as connection:
-        taxon_rows = connection.execute("SELECT taxon_id, name FROM range_taxa").fetchall()
-    assert taxon_rows == [(12345, "Agelaius phoeniceus")]
+        with pytest.raises(sqlite3.OperationalError, match="no such table: range_taxa"):
+            connection.execute("SELECT taxon_id, name FROM range_taxa").fetchall()
 
 
 def test_import_inaturalist_open_range_data_skips_when_database_exists(

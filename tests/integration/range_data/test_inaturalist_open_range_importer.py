@@ -26,6 +26,7 @@ def test_import_geopackages_imports_split_archive_files_into_range_store(tmp_pat
             {
                 "fid": 1,
                 "taxon_id": "111",
+                "name": "First bird",
                 "wkb": b"first-bird-range",
                 "bounds": (-100.0, -99.0, 30.0, 31.0),
             }
@@ -38,6 +39,7 @@ def test_import_geopackages_imports_split_archive_files_into_range_store(tmp_pat
             {
                 "fid": 1,
                 "taxon_id": "222",
+                "name": "Second bird",
                 "wkb": b"second-bird-range",
                 "bounds": (-97.0, -96.0, 32.0, 33.0),
             }
@@ -71,6 +73,9 @@ def test_import_geopackages_imports_split_archive_files_into_range_store(tmp_pat
                 "SELECT key, value FROM range_store_metadata ORDER BY key"
             ).fetchall()
         )
+        taxon_rows = connection.execute(
+            "SELECT taxon_id, name FROM range_taxa ORDER BY taxon_id"
+        ).fetchall()
 
     assert range_rows == [
         (1, 111, -100.0, 30.0, -99.0, 31.0, b"first-bird-range"),
@@ -81,6 +86,7 @@ def test_import_geopackages_imports_split_archive_files_into_range_store(tmp_pat
         (2, -97.0, -96.0, 32.0, 33.0),
     ]
     assert metadata_rows == {"ranges": "2", "version": "2.31"}
+    assert taxon_rows == [(111, "First bird"), (222, "Second bird")]
 
 
 def _create_fake_geopackage(geopackage_path, table_name: str, rows: list[dict]) -> None:
@@ -91,6 +97,7 @@ def _create_fake_geopackage(geopackage_path, table_name: str, rows: list[dict]) 
                 CREATE TABLE "{table_name}" (
                     fid INTEGER PRIMARY KEY,
                     taxon_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
                     geom BLOB NOT NULL
                 )
                 """
@@ -110,8 +117,9 @@ def _create_fake_geopackage(geopackage_path, table_name: str, rows: list[dict]) 
                 minx, maxx, miny, maxy = row["bounds"]
                 geometry_with_header = b"abcAefgh" + row["wkb"]
                 connection.execute(
-                    f'INSERT INTO "{table_name}" (fid, taxon_id, geom) VALUES (?, ?, ?)',
-                    (row["fid"], row["taxon_id"], geometry_with_header),
+                    f'INSERT INTO "{table_name}" (fid, taxon_id, name, geom) '
+                    "VALUES (?, ?, ?, ?)",
+                    (row["fid"], row["taxon_id"], row["name"], geometry_with_header),
                 )
                 connection.execute(
                     f'INSERT INTO "rtree_{table_name}_geom" (id, minx, maxx, miny, maxy) '
