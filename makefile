@@ -91,13 +91,13 @@ preop-taxonomy-dwca:
 	$(VENV_BIN)/python -m wild_catalog.taxonomy.preop
 
 preop-range-maps:
-	$(VENV_BIN)/python -m wild_catalog.prior.build.cli
+	$(VENV_BIN)/python -m wild_catalog.range_data.preop
 
 preop-classifier-model:
-	$(VENV_BIN)/python -m wild_catalog.classifier.preop
+	$(VENV_BIN)/python -m wild_catalog.species_classifier.preop
 
 preop-detector-model:
-	$(VENV_BIN)/python -m wild_catalog.detection.preop
+	$(VENV_BIN)/python -m wild_catalog.wildlife_detection.preop
 
 # 10. Pre-PR Validation checklist (Runs updates, linter, and tests)
 pr: install lint test
