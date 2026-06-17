@@ -5,6 +5,7 @@ Wild Catalog is an open-source tool that looks at nature photos and automaticall
 ## Table of Contents
 
 * [Contributing](./docs/contributing.md)
+* [Third-Party Notices](./third-party-notices.md)
 
 ## Development Setup
 
@@ -20,7 +21,7 @@ The install flow bootstraps [`uv`](https://docs.astral.sh/uv/) inside `.venv` an
 
 Copyright 2026 Jason Dentler
 
-Source code in this repository is licensed under the [Apache License, Version 2.0](./LICENSE.txt). Sample images and other photographic assets are not licensed under Apache 2.0. See [NOTICE.txt](./NOTICE.txt) for details.
+Source code in this repository is licensed under the [Apache License, Version 2.0](./LICENSE.txt). Sample images and other photographic assets are not licensed under Apache 2.0. See [NOTICE.txt](./NOTICE.txt) for details. Third-party open source package notices are listed in [third-party-notices.md](./third-party-notices.md).
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at:
 

@@ -2,6 +2,8 @@ Copyright 2026 Jason Dentler
 
 This product includes software developed by Jason Dentler (http://jasondentler.com/).
 
+Third-party open source package notices are listed in third-party-notices.md.
+
 -------------------------------------------------------------------------------
 IMAGE ATTRIBUTION AND LICENSING
 -------------------------------------------------------------------------------
