@@ -99,6 +99,12 @@ class SQLiteSpeciesRangeStore(SpeciesRangeStore):
             self._connection.close()
             self._connection = None
 
+    def __enter__(self) -> "SQLiteSpeciesRangeStore":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
     def _get_connection(self) -> sqlite3.Connection:
         if self._connection is None:
             self._connection = sqlite3.connect(

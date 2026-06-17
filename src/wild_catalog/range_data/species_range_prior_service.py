@@ -109,6 +109,17 @@ class SpeciesRangePriorService:
     def _build_store(self, settings: Settings) -> SpeciesRangeStore:
         return SQLiteSpeciesRangeStore(settings.range_store_database_path)
 
+    def close(self) -> None:
+        close = getattr(self._store, "close", None)
+        if callable(close):
+            close()
+
+    def __enter__(self) -> "SpeciesRangePriorService":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
     @staticmethod
     def _validate_class_index(class_index: ClassIndex) -> None:
         class_ids = set(class_index.taxon_id_by_class_id)

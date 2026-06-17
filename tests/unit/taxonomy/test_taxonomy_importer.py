@@ -71,17 +71,16 @@ def test_taxonomy_service_enriches_prediction_lineage_and_common_names(tmp_path)
         archive_path,
         languages=("en-US", "es-MX"),
     )
-    service = TaxonomyService(SQLiteTaxonomyStore(database_path))
-
-    enriched = service.enrich_prediction(
-        Prediction(
-            confidence=0.91,
-            is_present=True,
-            taxon_id=418151,
-            class_id=12,
-        ),
-        common_name_language="es-MX",
-    )
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        enriched = service.enrich_prediction(
+            Prediction(
+                confidence=0.91,
+                is_present=True,
+                taxon_id=418151,
+                class_id=12,
+            ),
+            common_name_language="es-MX",
+        )
 
     assert enriched.accepted_taxon_id == 418151
     assert enriched.taxonomy == (
@@ -125,12 +124,11 @@ def test_taxonomy_service_falls_back_to_english_then_scientific_name(tmp_path) -
         archive_path,
         languages=("en-US",),
     )
-    service = TaxonomyService(SQLiteTaxonomyStore(database_path))
-
-    enriched = service.enrich_prediction(
-        Prediction(taxon_id=418151),
-        common_name_language="fr-FR",
-    )
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        enriched = service.enrich_prediction(
+            Prediction(taxon_id=418151),
+            common_name_language="fr-FR",
+        )
 
     assert enriched.taxonomy_common_names[-2:] == ("quagga", "Chapman's Zebra")
 
@@ -144,12 +142,11 @@ def test_taxonomy_service_defaults_missing_language_to_english(tmp_path) -> None
         archive_path,
         languages=("en-US",),
     )
-    service = TaxonomyService(SQLiteTaxonomyStore(database_path))
-
-    enriched = service.enrich_prediction(
-        Prediction(taxon_id=418151),
-        common_name_language=None,
-    )
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        enriched = service.enrich_prediction(
+            Prediction(taxon_id=418151),
+            common_name_language=None,
+        )
 
     assert enriched.taxonomy_common_names[-1] == "Chapman's Zebra"
 
@@ -165,12 +162,11 @@ def test_taxonomy_service_orders_lineage_by_parent_chain_and_omits_life_root(
         archive_path,
         languages=("en-US",),
     )
-    service = TaxonomyService(SQLiteTaxonomyStore(database_path))
-
-    enriched = service.enrich_prediction(
-        Prediction(taxon_id=9744),
-        common_name_language="en-US",
-    )
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        enriched = service.enrich_prediction(
+            Prediction(taxon_id=9744),
+            common_name_language="en-US",
+        )
 
     assert enriched.taxonomy == (
         "Animalia",

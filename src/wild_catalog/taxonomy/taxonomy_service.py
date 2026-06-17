@@ -52,6 +52,15 @@ class TaxonomyService:
             taxonomy_rank_names=tuple(entry.rank for entry in lineage),
         )
 
+    def close(self) -> None:
+        self._store.close()
+
+    def __enter__(self) -> "TaxonomyService":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
 
 def _language_preferences(common_name_language: str | None) -> tuple[str, ...]:
     normalized = (common_name_language or "en-US").strip().replace("_", "-").lower()
