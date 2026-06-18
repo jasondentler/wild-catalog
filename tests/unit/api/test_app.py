@@ -121,7 +121,36 @@ def test_identify_openapi_includes_upload_content_types() -> None:
             "value": "<binary image bytes>",
         }
     }
-    assert identify_operation["responses"]["200"]["description"] == "Successful Response"
+    success_response = identify_operation["responses"]["200"]
+    assert success_response["description"] == "Successful Response"
+    assert list(success_response["content"]) == ["multipart/mixed", "application/json"]
+    assert success_response["content"]["multipart/mixed"] == {
+        "schema": {
+            "type": "string",
+            "format": "binary",
+        },
+        "example": (
+            "Multipart response with an application/json part followed by "
+            "zero or more image/jpeg detected image parts."
+        ),
+    }
+    assert identify_operation["responses"]["406"] == {
+        "description": (
+            "The requested response format is not acceptable. "
+            "return_detected_images=true requires Accept: multipart/mixed."
+        ),
+        "content": {
+            "application/json": {
+                "example": {
+                    "error": {
+                        "code": "not_acceptable",
+                        "message": "Requested detected images require multipart/mixed.",
+                        "request_id": "request-id",
+                    }
+                }
+            }
+        },
+    }
     identify_response_schema = schema["components"]["schemas"]["IdentifyResponse"]
     assert identify_response_schema["required"] == ["results"]
     assert identify_response_schema["properties"]["gps_coordinates"]["anyOf"] == [
@@ -131,6 +160,26 @@ def test_identify_openapi_includes_upload_content_types() -> None:
     assert schema["components"]["schemas"]["GpsCoordinatesResponse"]["required"] == [
         "latitude",
         "longitude",
+    ]
+    assert identify_operation["parameters"] == [
+        {
+            "name": "accept",
+            "in": "header",
+            "required": False,
+            "description": (
+                "Response format to request. Use multipart/mixed when "
+                "return_detected_images is true."
+            ),
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "multipart/mixed",
+                    "application/json",
+                    "application/json, multipart/mixed",
+                ],
+                "default": "multipart/mixed",
+            },
+        }
     ]
 
 @pytest.mark.parametrize(
@@ -223,6 +272,44 @@ def test_identify_accepts_image_with_json_payload(monkeypatch: pytest.MonkeyPatc
     assert seen_payloads == [
         '{"original_filename":"trail-camera.jpg","return_detected_images":true}'
     ]
+
+
+def test_identify_rejects_detected_images_with_json_accept_before_pipeline() -> None:
+    class DummyPipeline:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def execute(self, command, file):
+            self.calls += 1
+            return IdentifyResult(objects=())
+
+    pipeline = DummyPipeline()
+    client = TestClient(app)
+    app.dependency_overrides[get_identify_pipeline] = lambda: pipeline
+
+    try:
+        response = client.post(
+            "/identify",
+            files={"image": ("trail-camera.jpg", b"fake image bytes", "image/jpeg")},
+            data={
+                "payload": (
+                    '{"original_filename":"trail-camera.jpg","return_detected_images":true}'
+                ),
+            },
+            headers={"accept": "application/json", "x-request-id": "req-1"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 406
+    assert response.json() == {
+        "error": {
+            "code": "not_acceptable",
+            "message": "Requested detected images require multipart/mixed.",
+            "request_id": "req-1",
+        }
+    }
+    assert pipeline.calls == 0
 
 
 def test_identify_sets_multipart_response_format_when_accepted() -> None:

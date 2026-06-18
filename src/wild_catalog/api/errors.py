@@ -23,8 +23,11 @@ async def wild_catalog_error_handler(
     exc: WildCatalogError,
 ) -> JSONResponse:
     request_id = _get_or_create_request_id(request)
+    log = logger.warning
+    if 400 <= exc.status_code < 500:
+        log = logger.info
 
-    logger.warning(
+    log(
         "Wild Catalog request failed: code=%s status=%s request_id=%s detail=%s",
         exc.code,
         exc.status_code,

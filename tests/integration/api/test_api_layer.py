@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import io
 import json
 import os
+from email import policy
+from email.parser import BytesParser
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from wild_catalog.api.app import app
 from wild_catalog.api.dependencies import get_identify_pipeline
@@ -418,7 +422,7 @@ def test_identify_returns_406_when_detected_images_are_requested_without_multipa
         app.dependency_overrides.clear()
 
     assert response.status_code == 406
-    assert len(pipeline.calls) == 1
+    assert len(pipeline.calls) == 0
 
 
 @pytest.mark.integration
@@ -443,6 +447,50 @@ def test_identify_honors_multipart_accept_for_json_only_responses() -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("multipart/mixed; boundary=")
     assert b"Content-Type: application/json" in response.content
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    os.getenv("WILD_CATALOG_RUN_INTEGRATION_TESTS") != "1",
+    reason="Skipping integration test suite. Run 'make test' to execute.",
+)
+def test_identify_returns_cropped_jpeg_part_when_detected_images_are_requested() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/identify",
+        files={"image": (JPEG_IMAGE_1.name, JPEG_IMAGE_1.read_bytes(), "image/jpeg")},
+        data={
+            "payload": json.dumps(
+                {
+                    "original_filename": JPEG_IMAGE_1.name,
+                    "return_detected_images": True,
+                }
+            )
+        },
+        headers={"accept": "multipart/mixed"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("multipart/mixed; boundary=")
+
+    message = BytesParser(policy=policy.default).parsebytes(
+        (
+            f"Content-Type: {response.headers['content-type']}\r\n"
+            "MIME-Version: 1.0\r\n\r\n"
+        ).encode()
+        + response.content
+    )
+    parts = list(message.iter_parts())
+    json_parts = [part for part in parts if part.get_content_type() == "application/json"]
+    jpeg_parts = [part for part in parts if part.get_content_type() == "image/jpeg"]
+
+    assert len(json_parts) == 1
+    assert jpeg_parts
+
+    with Image.open(io.BytesIO(jpeg_parts[0].get_payload(decode=True))) as image:
+        image.verify()
+        assert image.format == "JPEG"
 
 
 @pytest.mark.integration

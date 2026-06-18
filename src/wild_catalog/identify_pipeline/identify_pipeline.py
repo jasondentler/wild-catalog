@@ -66,5 +66,5 @@ class IdentifyPipeline:
         return IdentifyResult(
             objects=identified_objects,
             gps_coordinates=gps_coordinates,
-            return_detected_images=False,
+            return_detected_images=command.return_detected_images,
         )

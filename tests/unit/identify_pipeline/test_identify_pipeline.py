@@ -146,7 +146,10 @@ def test_identify_pipeline_deduplicates_detected_objects() -> None:
             yield b"abc"
 
         result = await pipeline.execute(
-            IdentifyCommand(original_filename="image.jpg"),
+            IdentifyCommand(
+                original_filename="image.jpg",
+                return_detected_images=True,
+            ),
             stream(),
         )
         return result, detector, image
@@ -163,6 +166,8 @@ def test_identify_pipeline_deduplicates_detected_objects() -> None:
         ("mallard",),
         ("mallard",),
     ]
+    assert result.return_detected_images is True
+    assert all(obj.cropped_image is not None for obj in result.objects)
 
 
 def test_identify_pipeline_uses_injected_detection_deduplicator() -> None:

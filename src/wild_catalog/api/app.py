@@ -5,6 +5,7 @@ from typing import Annotated, BinaryIO
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import Response
 
 from wild_catalog.api.content_negotiation import select_identify_response_format
@@ -103,6 +104,42 @@ def health() -> dict[str, str]:
     dependencies=[Depends(log_identify_request)],
     openapi_extra=IDENTIFY_REQUEST_OPENAPI_EXTRA,
     response_model=IdentifyResponse,
+    responses={
+        200: {
+            "description": "Successful Response",
+            "content": {
+                "multipart/mixed": {
+                    "schema": {
+                        "type": "string",
+                        "format": "binary",
+                    },
+                    "example": (
+                        "Multipart response with an application/json part followed by "
+                        "zero or more image/jpeg detected image parts."
+                    ),
+                }
+            },
+        },
+        406: {
+            "description": (
+                "The requested response format is not acceptable. "
+                "return_detected_images=true requires Accept: multipart/mixed."
+            ),
+            "content": {
+                "application/json": {
+                    "example": {
+                        "error": {
+                            "code": "not_acceptable",
+                            "message": (
+                                "Requested detected images require multipart/mixed."
+                            ),
+                            "request_id": "request-id",
+                        }
+                    }
+                }
+            },
+        }
+    },
 )
 async def identify(
     request: Request,
@@ -118,6 +155,11 @@ async def identify(
     else:
         command, file = await create_request_body_command(request)
 
+    select_identify_response_format(
+        accept_header=accept_header,
+        return_detected_images=command.return_detected_images,
+    )
+
     result = await pipeline.execute(command, file)
     response_selection = select_identify_response_format(
         accept_header=accept_header,
@@ -130,3 +172,38 @@ async def identify(
     )
 
     return response
+
+
+def custom_openapi() -> dict[str, object]:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+    )
+    identify_response_content = (
+        openapi_schema.get("paths", {})
+        .get("/identify", {})
+        .get("post", {})
+        .get("responses", {})
+        .get("200", {})
+        .get("content", {})
+    )
+
+    if (
+        isinstance(identify_response_content, dict)
+        and "multipart/mixed" in identify_response_content
+        and "application/json" in identify_response_content
+    ):
+        openapi_schema["paths"]["/identify"]["post"]["responses"]["200"]["content"] = {
+            "multipart/mixed": identify_response_content["multipart/mixed"],
+            "application/json": identify_response_content["application/json"],
+        }
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi

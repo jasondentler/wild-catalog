@@ -56,10 +56,11 @@ def test_wild_catalog_error_handler_uses_public_detail(caplog) -> None:
     request = make_request({"x-request-id": "req-1"})
     exc = ContentLengthHeaderIsNotNumberError(debug_detail="debug")
 
-    caplog.set_level(logging.WARNING, logger="uvicorn.error")
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
     response = __import__("asyncio").run(wild_catalog_error_handler(request, exc))
 
     assert response.status_code == exc.status_code
+    assert caplog.records[0].levelno == logging.INFO
     assert caplog.records[0].exc_info is None
     assert caplog.records[0].name == "uvicorn.error"
 

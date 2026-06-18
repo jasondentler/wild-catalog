@@ -18,6 +18,26 @@ IDENTIFY_PAYLOAD_EXAMPLE = {
 IDENTIFY_PAYLOAD_EXAMPLE_JSON = json.dumps(IDENTIFY_PAYLOAD_EXAMPLE)
 
 IDENTIFY_REQUEST_OPENAPI_EXTRA = {
+    "parameters": [
+        {
+            "name": "accept",
+            "in": "header",
+            "required": False,
+            "description": (
+                "Response format to request. Use multipart/mixed when "
+                "return_detected_images is true."
+            ),
+            "schema": {
+                "type": "string",
+                "enum": [
+                    "multipart/mixed",
+                    "application/json",
+                    "application/json, multipart/mixed",
+                ],
+                "default": "multipart/mixed",
+            },
+        }
+    ],
     "requestBody": {
         "required": True,
         "content": {
