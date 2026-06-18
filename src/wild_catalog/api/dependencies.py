@@ -13,7 +13,11 @@ from wild_catalog.logit_conditioning import LogitConditioner
 from wild_catalog.range_data.species_range_prior_service import SpeciesRangePriorService
 from wild_catalog.range_data.sqlite_species_range_store import SQLiteSpeciesRangeStore
 from wild_catalog.species_classifier.classifier import SpeciesClassifier
-from wild_catalog.taxonomy import SQLiteTaxonomyStore, TaxonomyService
+from wild_catalog.taxonomy import (
+    SQLiteTaxonomyStore,
+    TaxonomyService,
+    local_then_inaturalist_taxon_lookup,
+)
 from wild_catalog.wildlife_detection.detector import WildlifeDetector
 
 
@@ -33,7 +37,9 @@ def get_identify_pipeline() -> IdentifyPipeline:
     species_classifier = SpeciesClassifier(
         settings,
         device=getattr(wildlife_detector, "device", None),
-        taxon_id_by_scientific_name=taxonomy_store.get_taxon_ids_by_scientific_names,
+        taxon_id_by_scientific_name=local_then_inaturalist_taxon_lookup(
+            taxonomy_store.get_taxon_ids_by_scientific_names,
+        ),
     )
     detection_processing_pipeline = DetectionProcessingPipeline(
         ImageCropper(settings),

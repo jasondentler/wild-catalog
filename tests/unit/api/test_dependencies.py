@@ -47,6 +47,7 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
         marker="taxonomy_store",
         get_taxon_ids_by_scientific_names=object(),
     )
+    expected_taxon_lookup = SimpleNamespace(marker="taxon_lookup")
     expected_taxonomy_service = SimpleNamespace(marker="taxonomy_service")
     detection_processing_pipeline = SimpleNamespace(
         marker="detection_processing_pipeline"
@@ -82,13 +83,18 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
         else None,
     )
     monkeypatch.setattr(
+        "wild_catalog.api.dependencies.local_then_inaturalist_taxon_lookup",
+        lambda local_lookup: expected_taxon_lookup
+        if local_lookup is expected_taxonomy_store.get_taxon_ids_by_scientific_names
+        else None,
+    )
+    monkeypatch.setattr(
         "wild_catalog.api.dependencies.SpeciesClassifier",
         lambda received_settings, *, device, taxon_id_by_scientific_name: species_classifier
         if (
             received_settings is settings
             and device == "mps"
-            and taxon_id_by_scientific_name
-            is expected_taxonomy_store.get_taxon_ids_by_scientific_names
+            and taxon_id_by_scientific_name is expected_taxon_lookup
         )
         else None,
     )
