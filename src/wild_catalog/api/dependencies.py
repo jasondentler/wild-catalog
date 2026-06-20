@@ -7,6 +7,9 @@ from wild_catalog.deduplicate_detections.detection_deduplicator import Detection
 from wild_catalog.detection_processing_pipeline.detection_processing_pipeline import (
     DetectionProcessingPipeline,
 )
+from wild_catalog.detection_processing_pipeline.prediction_name_normalizer import (
+    PredictionNameNormalizer,
+)
 from wild_catalog.identify_pipeline.identify_pipeline import IdentifyPipeline
 from wild_catalog.image_cropper.image_cropping import ImageCropper
 from wild_catalog.logit_conditioning import LogitConditioner
@@ -51,6 +54,7 @@ def get_identify_pipeline() -> IdentifyPipeline:
             top_k=settings.species_classifier_top_k,
         ),
         taxonomy_service=TaxonomyService(taxonomy_store),
+        name_normalizer=PredictionNameNormalizer(),
     )
 
     return IdentifyPipeline(

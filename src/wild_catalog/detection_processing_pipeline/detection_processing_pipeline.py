@@ -1,6 +1,9 @@
 from PIL import Image
 
 from wild_catalog.core.types import Detection, GpsCoordinates
+from wild_catalog.detection_processing_pipeline.prediction_name_normalizer import (
+    PredictionNameNormalizer,
+)
 from wild_catalog.identify_pipeline.identified_object import IdentifiedObject
 from wild_catalog.image_cropper.image_cropping import ImageCropper
 from wild_catalog.logit_conditioning.logit_conditioner import LogitConditioner
@@ -18,6 +21,7 @@ class DetectionProcessingPipeline:
         range_prior_service: SpeciesRangePriorService | None = None,
         logit_conditioner: LogitConditioner | None = None,
         taxonomy_service: TaxonomyService | None,
+        name_normalizer: PredictionNameNormalizer | None = None,
     ) -> None:
         if taxonomy_service is None:
             raise ValueError("taxonomy_service is required.")
@@ -27,6 +31,7 @@ class DetectionProcessingPipeline:
         self._range_prior_service = range_prior_service
         self._logit_conditioner = logit_conditioner
         self._taxonomy_service = taxonomy_service
+        self._name_normalizer = name_normalizer or PredictionNameNormalizer()
 
     def process(
         self,
@@ -47,6 +52,7 @@ class DetectionProcessingPipeline:
             predictions,
             common_name_language=common_name_language,
         )
+        predictions = self._name_normalizer.normalize_predictions(predictions)
 
         return IdentifiedObject(
             crop_result.original_box,

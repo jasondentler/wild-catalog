@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 import torch
 from PIL import Image
@@ -73,7 +75,15 @@ class _TaxonomyService:
 
     def enrich_predictions(self, predictions, *, common_name_language):
         self.calls.append((predictions, common_name_language))
-        return tuple(predictions)
+        return tuple(
+            prediction
+            if prediction.taxonomy_rank_names
+            else replace(
+                prediction,
+                taxonomy_rank_names=("species",) * len(prediction.taxonomy),
+            )
+            for prediction in predictions
+        )
 
 
 class _EnrichingTaxonomyService:
@@ -86,10 +96,15 @@ class _EnrichingTaxonomyService:
             Prediction(
                 confidence=prediction.confidence,
                 is_present=prediction.is_present,
-                taxonomy=("Animalia", "Aythya"),
-                taxonomy_common_names=("Animales", "Patos buceadores"),
+                taxonomy=("animalia", "aythya", "AFFINIS", "BOREALIS"),
+                taxonomy_common_names=(
+                    "animales",
+                    "patos buceadores",
+                    "black-bellied bewick's wren",
+                ),
                 class_id=prediction.class_id,
                 taxon_id=prediction.taxon_id,
+                taxonomy_rank_names=("kingdom", "genus", "species", "subspecies"),
             )
             for prediction in predictions
         )
@@ -120,6 +135,7 @@ def test_detection_processing_pipeline_crops_detection_and_classifies_crop() -> 
                 taxonomy=("mallard",),
                 taxonomy_common_names=("mallard",),
                 class_id=17,
+                taxonomy_rank_names=("species",),
             )
         ]
     )
@@ -144,7 +160,16 @@ def test_detection_processing_pipeline_crops_detection_and_classifies_crop() -> 
     )
     assert result.cropped_image.size == (19, 30)
     assert classifier.calls == [result.cropped_image]
-    assert result.predictions == tuple(classifier.predictions)
+    assert result.predictions == (
+        Prediction(
+            confidence=0.72,
+            is_present=True,
+            taxonomy=("mallard",),
+            taxonomy_common_names=("Mallard",),
+            class_id=17,
+            taxonomy_rank_names=("species",),
+        ),
+    )
 
 
 def test_detection_processing_pipeline_enriches_predictions_with_requested_language() -> None:
@@ -164,6 +189,7 @@ def test_detection_processing_pipeline_enriches_predictions_with_requested_langu
                 taxonomy_common_names=("mallard",),
                 class_id=17,
                 taxon_id=6930,
+                taxonomy_rank_names=("species",),
             )
         ]
     )
@@ -180,10 +206,16 @@ def test_detection_processing_pipeline_enriches_predictions_with_requested_langu
     )
 
     assert taxonomy_service.calls == [(tuple(classifier.predictions), "es-MX")]
-    assert result.predictions[0].taxonomy == ("Animalia", "Aythya")
+    assert result.predictions[0].taxonomy == (
+        "Animalia",
+        "Aythya",
+        "affinis",
+        "borealis",
+    )
     assert result.predictions[0].taxonomy_common_names == (
         "Animales",
-        "Patos buceadores",
+        "Patos Buceadores",
+        "Black-Bellied Bewick's Wren",
     )
 
 
