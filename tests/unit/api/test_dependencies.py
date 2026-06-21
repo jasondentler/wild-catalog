@@ -49,6 +49,7 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
     )
     expected_taxon_lookup = SimpleNamespace(marker="taxon_lookup")
     expected_taxonomy_service = SimpleNamespace(marker="taxonomy_service")
+    expected_name_normalizer = SimpleNamespace(marker="name_normalizer")
     detection_processing_pipeline = SimpleNamespace(
         marker="detection_processing_pipeline"
     )
@@ -110,6 +111,10 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
         if store is expected_taxonomy_store
         else None,
     )
+    monkeypatch.setattr(
+        "wild_catalog.api.dependencies.PredictionNameNormalizer",
+        lambda: expected_name_normalizer,
+    )
 
     def build_logit_conditioner(*, gamma, epsilon, top_k):
         if gamma == 2.0 and epsilon == 1e-12 and top_k == 5:
@@ -128,6 +133,7 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
         range_prior_service: object,
         logit_conditioner: object,
         taxonomy_service: object,
+        name_normalizer: object,
     ):
         if (
             received_cropper is image_cropper
@@ -135,6 +141,7 @@ def test_get_identify_pipeline_builds_pipeline(monkeypatch) -> None:
             and range_prior_service is expected_range_prior_service
             and logit_conditioner is expected_logit_conditioner
             and taxonomy_service is expected_taxonomy_service
+            and name_normalizer is expected_name_normalizer
         ):
             return detection_processing_pipeline
         return None

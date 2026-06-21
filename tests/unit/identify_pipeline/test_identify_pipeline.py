@@ -46,6 +46,7 @@ class _Classifier:
                 taxonomy=("mallard",),
                 taxonomy_common_names=("mallard",),
                 class_id=17,
+                taxonomy_rank_names=("species",),
             )
         ]
 
