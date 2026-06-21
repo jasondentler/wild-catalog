@@ -199,6 +199,31 @@ Once your environment is built via the initial [`make`](https://www.gnu.org/soft
 *   **`make third-party-notices`** — Regenerates [third-party-notices.md](./third-party-notices.md) from the installed dependency metadata.
 *   **`make clean`** — Wipes generated local state, including `.venv` and `data/`, if you need to perform a fresh reinstall.
 
+## Docker
+
+Build and start the API with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+The API is available at <http://localhost:8000>, with its health endpoint at
+<http://localhost:8000/health>. Compose stores downloaded models, taxonomy, and range data in
+the `wild-catalog-data` volume so they survive container replacement. The initial startup runs
+the application's pre-operation imports and can take a long time and require several gigabytes
+of disk space; subsequent starts reuse the volume.
+
+Compose downloads the MegaDetector weights from Zenodo. Set
+`WILD_CATALOG_MDV6_MODEL_URL` to use a mirror or local model server instead.
+
+To stop the service without deleting its downloaded data:
+
+```bash
+docker compose down
+```
+
+The equivalent Make targets are `make docker-build`, `make docker-up`, and `make docker-down`.
+
 
 ## Pre-operational data and model setup
 

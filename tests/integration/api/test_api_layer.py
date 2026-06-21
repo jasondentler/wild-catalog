@@ -455,21 +455,20 @@ def test_identify_honors_multipart_accept_for_json_only_responses() -> None:
     reason="Skipping integration test suite. Run 'make test' to execute.",
 )
 def test_identify_returns_cropped_jpeg_part_when_detected_images_are_requested() -> None:
-    client = TestClient(app)
-
-    response = client.post(
-        "/identify",
-        files={"image": (JPEG_IMAGE_1.name, JPEG_IMAGE_1.read_bytes(), "image/jpeg")},
-        data={
-            "payload": json.dumps(
-                {
-                    "original_filename": JPEG_IMAGE_1.name,
-                    "return_detected_images": True,
-                }
-            )
-        },
-        headers={"accept": "multipart/mixed"},
-    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/identify",
+            files={"image": (JPEG_IMAGE_1.name, JPEG_IMAGE_1.read_bytes(), "image/jpeg")},
+            data={
+                "payload": json.dumps(
+                    {
+                        "original_filename": JPEG_IMAGE_1.name,
+                        "return_detected_images": True,
+                    }
+                )
+            },
+            headers={"accept": "multipart/mixed"},
+        )
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("multipart/mixed; boundary=")

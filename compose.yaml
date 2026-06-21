@@ -1,0 +1,17 @@
+services:
+  api:
+    build:
+      context: .
+    image: wild-catalog:local
+    init: true
+    environment:
+      WILD_CATALOG_MDV6_MODEL_URL: >-
+        https://zenodo.org/records/15398270/files/MDV6-apa-rtdetr-e.pth?download=1
+    ports:
+      - "8000:8000"
+    volumes:
+      - wild-catalog-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  wild-catalog-data:

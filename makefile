@@ -1,4 +1,4 @@
-.PHONY: all clean venv install install-ci install-hooks license-check third-party-notices lint lint-fix test test-fast check-prereqs serve pr commit preop preop-taxonomy-dwca preop-range-maps preop-classifier-model preop-detector-model
+.PHONY: all clean venv install install-ci install-hooks license-check third-party-notices lint lint-fix test test-fast check-prereqs serve docker-build docker-up docker-down pr commit preop preop-taxonomy-dwca preop-range-maps preop-classifier-model preop-detector-model
 
 # 1. Detect Operating System and set path/variable rules
 ifeq ($(OS),Windows_NT)
@@ -93,6 +93,16 @@ test-fast:
 # 9. Start the local development API server with auto-reload
 serve:
 	$(VENV_BIN)/uvicorn wild_catalog.api.app:app --reload --log-level debug --app-dir src
+
+# 9a. Build and run the production container
+docker-build:
+	BUILDAH_FORMAT=docker docker build --tag wild-catalog:local .
+
+docker-up:
+	docker compose up --build
+
+docker-down:
+	docker compose down
 
 # 9b. Run pre-operational setup tasks
 preop:
