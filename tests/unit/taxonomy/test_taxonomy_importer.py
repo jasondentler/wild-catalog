@@ -200,6 +200,46 @@ def test_taxonomy_service_orders_lineage_by_parent_chain_and_omits_life_root(
     )
 
 
+def test_taxonomy_service_pads_unknown_taxon_prediction_fields(tmp_path) -> None:
+    enriched = TaxonomyService(
+        SQLiteTaxonomyStore(tmp_path / "unused.sqlite")
+    ).enrich_prediction(
+        Prediction(
+            taxon_id=-1,
+            taxonomy=("Animalia", "Agelaius", "phoeniceus"),
+            taxonomy_rank_names=("kingdom",),
+            taxonomy_common_names=("Animals", "Blackbirds"),
+        )
+    )
+
+    assert enriched.taxonomy == ("Animalia", "Agelaius", "phoeniceus")
+    assert enriched.taxonomy_rank_names == ("kingdom", "", "")
+    assert enriched.taxonomy_common_names == ("Animals", "Blackbirds", "")
+
+
+def test_taxonomy_service_pads_prediction_fields_when_lineage_is_missing(
+    tmp_path,
+) -> None:
+    archive_path = tmp_path / "taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_taxonomy_archive(archive_path)
+    import_taxonomy_archive(database_path, archive_path)
+
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        enriched = service.enrich_prediction(
+            Prediction(
+                taxon_id=999999,
+                taxonomy=("Animalia", "Agelaius", "phoeniceus"),
+                taxonomy_rank_names=("kingdom",),
+                taxonomy_common_names=("Animals", "Blackbirds"),
+            )
+        )
+
+    assert enriched.taxonomy == ("Animalia", "Agelaius", "phoeniceus")
+    assert enriched.taxonomy_rank_names == ("kingdom", "", "")
+    assert enriched.taxonomy_common_names == ("Animals", "Blackbirds", "")
+
+
 def _create_taxonomy_archive(
     archive_path,
     *,

@@ -29,12 +29,12 @@ class TaxonomyService:
         common_name_language: str = "en-US",
     ) -> Prediction:
         if prediction.taxon_id < 0:
-            return prediction
+            return _pad_unknown_taxon_prediction(prediction)
 
         accepted_taxon_id = self._store.get_accepted_taxon_id(prediction.taxon_id)
         lineage = self._store.get_lineage(accepted_taxon_id)
         if not lineage:
-            return prediction
+            return _pad_unknown_taxon_prediction(prediction)
 
         common_names = self._store.get_common_names(
             (entry.taxon_id for entry in lineage),
@@ -78,3 +78,22 @@ def _language_preferences(common_name_language: str | None) -> tuple[str, ...]:
             seen.add(language)
             deduplicated.append(language)
     return tuple(deduplicated)
+
+
+def _pad_unknown_taxon_prediction(prediction: Prediction) -> Prediction:
+    length = max(
+        len(prediction.taxonomy),
+        len(prediction.taxonomy_rank_names),
+        len(prediction.taxonomy_common_names),
+    )
+
+    return replace(
+        prediction,
+        taxonomy=_pad_tuple(prediction.taxonomy, length),
+        taxonomy_rank_names=_pad_tuple(prediction.taxonomy_rank_names, length),
+        taxonomy_common_names=_pad_tuple(prediction.taxonomy_common_names, length),
+    )
+
+
+def _pad_tuple(values: tuple[str, ...], length: int) -> tuple[str, ...]:
+    return values + ("",) * (length - len(values))
