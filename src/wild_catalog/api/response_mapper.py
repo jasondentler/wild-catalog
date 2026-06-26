@@ -28,28 +28,34 @@ from wild_catalog.identify_pipeline.identify_result import (
 def map_response(
     result: IdentifyResult | None,
     response_selection: ResponseSelection,
+    payload: dict[str, object] | None = None,
 ) -> Response:
     if result is None:
         return Response(status_code=204)
 
+    if payload is None:
+        payload = map_identify_result_payload(result)
+
     if response_selection.response_format == ResponseFormat.JSON:
         response = JSONResponse(
             status_code=200,
-            content=_map_identify_result(result).model_dump(),
+            content=payload,
         )
         return response
 
-    return map_multipart_response(result, response_selection)
+    return map_multipart_response(result, response_selection, payload=payload)
 
 
 def map_multipart_response(
     result: IdentifyResult,
     response_selection: ResponseSelection,
+    payload: dict[str, object] | None = None,
 ) -> StreamingResponse:
     boundary = f"wildcatalog-{uuid.uuid4().hex}"
+    if payload is None:
+        payload = map_identify_result_payload(result)
 
     async def stream() -> AsyncIterator[bytes]:
-        payload = _map_identify_result(result).model_dump()
         yield _multipart_json_part(boundary, payload)
 
         if response_selection.include_images:
@@ -65,6 +71,10 @@ def map_multipart_response(
         media_type=f'multipart/mixed; boundary="{boundary}"',
     )
     return response
+
+
+def map_identify_result_payload(result: IdentifyResult) -> dict[str, object]:
+    return _map_identify_result(result).model_dump()
 
 
 def _map_identify_result(result: IdentifyResult) -> IdentifyResponse:

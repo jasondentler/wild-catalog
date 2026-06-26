@@ -14,7 +14,8 @@ from wild_catalog.api.errors import register_exception_handlers
 from wild_catalog.api.logging import log_identify_request
 from wild_catalog.api.multipart_request_mapper import create_multipart_form_command
 from wild_catalog.api.openapi_schemas import IDENTIFY_REQUEST_OPENAPI_EXTRA
-from wild_catalog.api.response_mapper import map_response
+from wild_catalog.api.response_archive import IdentifyResponseArchive
+from wild_catalog.api.response_mapper import map_identify_result_payload, map_response
 from wild_catalog.api.response_models import IdentifyResponse
 from wild_catalog.api.simple_request_mapper import create_request_body_command
 from wild_catalog.core.errors import (
@@ -144,6 +145,7 @@ def health() -> dict[str, str]:
 async def identify(
     request: Request,
     pipeline: Annotated[IdentifyPipeline, Depends(get_identify_pipeline)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> Response:
     content_type = request.headers.get("content-type", "")
     accept_header = request.headers.get("accept")
@@ -165,10 +167,13 @@ async def identify(
         accept_header=accept_header,
         return_detected_images=result.return_detected_images,
     )
+    payload = map_identify_result_payload(result)
+    IdentifyResponseArchive(settings.response_archive_dir).store(result, payload)
 
     response = map_response(
         result,
         response_selection,
+        payload=payload,
     )
 
     return response

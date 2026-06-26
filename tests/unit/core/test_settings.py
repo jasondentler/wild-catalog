@@ -23,6 +23,7 @@ def test_settings_from_env_uses_environment_overrides(
         "WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR",
         "custom/geopackages",
     )
+    monkeypatch.setenv("WILD_CATALOG_RESPONSE_ARCHIVE_DIR", "custom/responses")
 
     settings = Settings.from_env()
 
@@ -39,6 +40,7 @@ def test_settings_from_env_uses_environment_overrides(
     assert settings.logit_conditioning_epsilon == 0.000001
     assert str(settings.range_store_database_path) == "custom/range-store.sqlite"
     assert str(settings.range_geopackage_download_dir) == "custom/geopackages"
+    assert str(settings.response_archive_dir) == "custom/responses"
 
 
 def test_settings_from_env_uses_defaults_when_env_is_missing(
@@ -57,6 +59,7 @@ def test_settings_from_env_uses_defaults_when_env_is_missing(
     monkeypatch.delenv("WILD_CATALOG_LOGIT_CONDITIONING_EPSILON", raising=False)
     monkeypatch.delenv("WILD_CATALOG_RANGE_STORE_DATABASE_PATH", raising=False)
     monkeypatch.delenv("WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR", raising=False)
+    monkeypatch.delenv("WILD_CATALOG_RESPONSE_ARCHIVE_DIR", raising=False)
 
     settings = Settings.from_env()
 
@@ -75,3 +78,4 @@ def test_settings_from_env_uses_defaults_when_env_is_missing(
         "data/range-data/inaturalist-open-range-store.sqlite"
     )
     assert str(settings.range_geopackage_download_dir) == "data/range-data/geopackages"
+    assert str(settings.response_archive_dir) == "data/responses"

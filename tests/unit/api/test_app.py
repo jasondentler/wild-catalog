@@ -1,10 +1,13 @@
+import json
+from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
 from wild_catalog.api import app as app_module
 from wild_catalog.api.app import app
-from wild_catalog.api.dependencies import get_identify_pipeline
+from wild_catalog.api.dependencies import get_identify_pipeline, get_settings
+from wild_catalog.core.settings import Settings
 from wild_catalog.identify_pipeline.identify_result import IdentifyResult
 
 
@@ -272,6 +275,71 @@ def test_identify_accepts_image_with_json_payload(monkeypatch: pytest.MonkeyPatc
     assert seen_payloads == [
         '{"original_filename":"trail-camera.jpg","return_detected_images":true}'
     ]
+
+
+def test_identify_archives_successful_json_response(tmp_path) -> None:
+    class DummyPipeline:
+        async def execute(self, command, file):
+            _ = command, file
+            return IdentifyResult(
+                objects=(),
+                original_filename="IMG_8113.jpg",
+                captured_at=datetime(2026, 3, 1, 14, 30, 0),
+            )
+
+    client = TestClient(app)
+    app.dependency_overrides[get_identify_pipeline] = lambda: DummyPipeline()
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        response_archive_dir=tmp_path
+    )
+
+    try:
+        response = client.post(
+            "/identify",
+            files={"image": ("IMG_8113.jpg", b"fake image bytes", "image/jpeg")},
+            headers={"accept": "application/json"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    archived_response = tmp_path / "20260301-IMG_8113.json"
+    assert json.loads(archived_response.read_text()) == response.json()
+
+
+def test_identify_archives_successful_multipart_response(tmp_path) -> None:
+    class DummyPipeline:
+        async def execute(self, command, file):
+            _ = command, file
+            return IdentifyResult(
+                objects=(),
+                original_filename="IMG_8113.jpg",
+                captured_at=datetime(2026, 3, 1, 14, 30, 0),
+                return_detected_images=True,
+            )
+
+    client = TestClient(app)
+    app.dependency_overrides[get_identify_pipeline] = lambda: DummyPipeline()
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        response_archive_dir=tmp_path
+    )
+
+    try:
+        response = client.post(
+            "/identify",
+            files={"image": ("IMG_8113.jpg", b"fake image bytes", "image/jpeg")},
+            headers={"accept": "multipart/mixed"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("multipart/mixed; boundary=")
+    archived_response = tmp_path / "20260301-IMG_8113.json"
+    assert json.loads(archived_response.read_text()) == {
+        "gps_coordinates": None,
+        "results": [],
+    }
 
 
 def test_identify_rejects_detected_images_with_json_accept_before_pipeline() -> None:

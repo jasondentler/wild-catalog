@@ -53,6 +53,8 @@ class IdentifyPipeline:
         detections = self._wildlife_detector.detect(normalized_image)
         deduplicated_detections = self._detection_deduplicator.deduplicate(detections)
         gps_coordinates = getattr(converted, "gps_coordinates", None)
+        captured_at = getattr(converted, "captured_at", None)
+        original_filename = getattr(converted, "original_filename", None)
         identified_objects = tuple(
             self._detection_processing_pipeline.process(
                 normalized_image,
@@ -65,6 +67,8 @@ class IdentifyPipeline:
 
         return IdentifyResult(
             objects=identified_objects,
+            original_filename=original_filename,
+            captured_at=captured_at,
             gps_coordinates=gps_coordinates,
             return_detected_images=command.return_detected_images,
         )

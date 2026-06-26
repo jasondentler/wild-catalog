@@ -12,7 +12,6 @@ MDV6_APACHE_RTDETR_C_URL = (
     "MDV6-apa-rtdetr-c.pth?download=1"
 )
 
-
 DEFAULTS = {
     "WILD_CATALOG_MAX_UPLOAD_BYTES": 100_000_000,
     "WILD_CATALOG_MAX_IMAGE_PIXELS": 11_648 * 8_742,
@@ -37,6 +36,7 @@ DEFAULTS = {
     "WILD_CATALOG_TAXONOMY_ARCHIVE_DOWNLOAD_DIR": Path(
         "data/taxonomy"
     ),
+    "WILD_CATALOG_RESPONSE_ARCHIVE_DIR": Path("data/responses"),
     "WILD_CATALOG_LANGUAGES": ("en-US",),
 }
 
@@ -76,6 +76,7 @@ class Settings:
     taxonomy_archive_download_dir: Path = DEFAULTS[
         "WILD_CATALOG_TAXONOMY_ARCHIVE_DOWNLOAD_DIR"
     ]
+    response_archive_dir: Path = DEFAULTS["WILD_CATALOG_RESPONSE_ARCHIVE_DIR"]
     taxonomy_languages: tuple[str, ...] = DEFAULTS["WILD_CATALOG_LANGUAGES"]
 
     @classmethod
@@ -115,6 +116,9 @@ class Settings:
             ),
             taxonomy_archive_download_dir=cls._get_path_value(
                 "WILD_CATALOG_TAXONOMY_ARCHIVE_DOWNLOAD_DIR"
+            ),
+            response_archive_dir=cls._get_path_value(
+                "WILD_CATALOG_RESPONSE_ARCHIVE_DIR"
             ),
             taxonomy_languages=cls._get_csv_tuple_value("WILD_CATALOG_LANGUAGES"),
         )
