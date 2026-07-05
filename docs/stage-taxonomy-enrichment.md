@@ -240,7 +240,11 @@ The `TaxonomyImporter` is responsible for downloading the archive, extracting th
 -- Table Schema TBD
 ```
 
-By default only en-US common names will be imported. The `WILD_CATALOG_LANGUAGES` environment variable is a comma-separated list of ISO-639 language codes (just like an `Accept-Language` header). Refer to [vernacular_language_code_to_csv.py](../src/wild_catalog/taxonomy/vernacular_language_code_to_csv.py) for supported languages.
+By default all supported common-name languages are imported. Set the
+`WILD_CATALOG_LANGUAGES` environment variable to a comma-separated list of
+ISO-639 language codes to limit startup import to those languages. Refer to
+[vernacular_language_code_to_csv.py](../src/wild_catalog/taxonomy/vernacular_language_code_to_csv.py)
+for supported languages.
 
 ### Taxonomy Service
 

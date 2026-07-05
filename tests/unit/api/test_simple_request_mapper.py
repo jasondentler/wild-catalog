@@ -6,6 +6,7 @@ from starlette.requests import Request
 from wild_catalog.api.simple_request_mapper import (
     create_request_body_command,
     parse_accept_language_header,
+    parse_accept_language_header_preferences,
 )
 from wild_catalog.core.errors import (
     ContentLengthHeaderIsNotNumberError,
@@ -30,6 +31,12 @@ def test_parse_accept_language_header_returns_best_match(
     assert parse_accept_language_header(accept_language) == expected
 
 
+def test_parse_accept_language_header_preferences_returns_weighted_order() -> None:
+    assert parse_accept_language_header_preferences(
+        "en-US;q=0.8, es-MX;q=0.9, fr-FR;q=0"
+    ) == ("es-MX", "en-US")
+
+
 @pytest.mark.parametrize(
     "accept_language",
     [
@@ -37,6 +44,7 @@ def test_parse_accept_language_header_returns_best_match(
         ",",
         " ;q=0.8",
         "en-US;q=bad",
+        "en-US;q=0",
         " ; q=0.8, ",
     ],
 )

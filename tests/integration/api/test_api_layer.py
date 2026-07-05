@@ -11,9 +11,11 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from wild_catalog.api import app as app_module
 from wild_catalog.api.app import app
-from wild_catalog.api.dependencies import get_identify_pipeline
+from wild_catalog.api.dependencies import get_identify_pipeline, get_settings
 from wild_catalog.api.openapi_schemas import IDENTIFY_REQUEST_OPENAPI_EXTRA
+from wild_catalog.core.settings import Settings
 from wild_catalog.core.types import GpsCoordinates
 from wild_catalog.identify_pipeline.identify_command import ExifOverride
 from wild_catalog.identify_pipeline.identify_result import IdentifyResult
@@ -31,6 +33,28 @@ RAW_IMAGE = SAMPLE_IMAGES_DIR / "20260525-IMG_7906.CR3"
 DNG_IMAGE = SAMPLE_IMAGES_DIR / "20260525-IMG_7906.dng"
 DNG_IMAGE_2 = SAMPLE_IMAGES_DIR / "20260525-IMG_7906_1.dng"
 HEIC_IMAGE = SAMPLE_IMAGES_DIR / "20260525-IMG_7906.heic"
+
+
+@pytest.fixture(autouse=True)
+def _use_default_upload_limit(monkeypatch: pytest.MonkeyPatch):
+    settings_from_env = staticmethod(lambda: Settings(max_upload_bytes=100000000))
+    monkeypatch.setattr(
+        app_module.Settings,
+        "from_env",
+        settings_from_env,
+    )
+    monkeypatch.setattr(
+        app_module.limit_content_length.__globals__["Settings"],
+        "from_env",
+        settings_from_env,
+    )
+    get_settings.cache_clear()
+    get_identify_pipeline.cache_clear()
+    app.middleware_stack = None
+    yield
+    get_identify_pipeline.cache_clear()
+    get_settings.cache_clear()
+    app.middleware_stack = None
 
 
 class DummyPipeline:
@@ -517,5 +541,5 @@ def test_identify_rejects_heic_upload(monkeypatch: pytest.MonkeyPatch) -> None:
         },
     )
 
-    assert response.status_code == 415
+    assert response.status_code == 415, response.text
     assert response.json()["error"]["code"] == "unsupported_image_format"

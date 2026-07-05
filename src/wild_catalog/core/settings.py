@@ -37,7 +37,7 @@ DEFAULTS = {
         "data/taxonomy"
     ),
     "WILD_CATALOG_RESPONSE_ARCHIVE_DIR": Path("data/responses"),
-    "WILD_CATALOG_LANGUAGES": ("en-US",),
+    "WILD_CATALOG_LANGUAGES": (),
 }
 
 

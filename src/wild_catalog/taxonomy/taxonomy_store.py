@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -12,6 +13,13 @@ class TaxonLineageEntry:
     rank: str
     scientific_name: str
     display_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class TaxonomySearchMatch:
+    taxon_id: int
+    matched_name: str
+    score: int
 
 
 class SQLiteTaxonomyStore:
@@ -139,6 +147,127 @@ class SQLiteTaxonomyStore:
         ).fetchall()
         return {str(row[0]): int(row[1]) for row in rows}
 
+    def search_scientific_names(
+        self,
+        query: str,
+        *,
+        limit: int,
+    ) -> tuple[TaxonomySearchMatch, ...]:
+        fts_query = _to_prefix_fts_query(query)
+        if not fts_query:
+            return ()
+
+        rows = self._get_connection().execute(
+            """
+            SELECT taxon_id, matched_name, score
+            FROM (
+                SELECT
+                    taxon_id,
+                    scientific_name AS matched_name,
+                    CASE
+                        WHEN lower(scientific_name) = lower(?) THEN 0
+                        WHEN lower(scientific_name) = lower(display_name) THEN 1
+                        WHEN substr(lower(scientific_name), 1, length(?)) = lower(?) THEN 2
+                        ELSE 3
+                    END AS score
+                FROM taxonomy_taxa_fts
+                WHERE scientific_name MATCH ?
+
+                UNION ALL
+
+                SELECT
+                    taxon_id,
+                    display_name AS matched_name,
+                    CASE
+                        WHEN lower(display_name) = lower(?) THEN 0
+                        WHEN substr(lower(display_name), 1, length(?)) = lower(?) THEN 2
+                        ELSE 3
+                    END AS score
+                FROM taxonomy_taxa_fts
+                WHERE display_name != scientific_name
+                  AND display_name MATCH ?
+            )
+            ORDER BY score, lower(matched_name), taxon_id
+            LIMIT ?
+            """,
+            (
+                query,
+                query,
+                query,
+                fts_query,
+                query,
+                query,
+                query,
+                fts_query,
+                limit,
+            ),
+        ).fetchall()
+
+        return _search_matches_from_rows(rows)
+
+    def search_common_names(
+        self,
+        query: str,
+        *,
+        language_preferences: Sequence[str],
+        limit: int,
+    ) -> tuple[TaxonomySearchMatch, ...]:
+        fts_query = _to_prefix_fts_query(query)
+        requested_languages = tuple(dict.fromkeys(language_preferences))
+        if not fts_query or not requested_languages:
+            return ()
+
+        language_values = {
+            language: index for index, language in enumerate(requested_languages)
+        }
+        language_case = " ".join(
+            f"WHEN ? THEN {index}" for index, _language in enumerate(requested_languages)
+        )
+
+        rows = self._get_connection().execute(
+            f"""
+            SELECT taxon_id, vernacular_name, score
+            FROM (
+                SELECT
+                    taxon_id,
+                    vernacular_name,
+                    CASE
+                        WHEN lower(vernacular_name) = lower(?) THEN 0
+                        WHEN substr(lower(vernacular_name), 1, length(?)) = lower(?) THEN 2
+                        ELSE 3
+                    END AS name_score,
+                    CASE language_code {language_case} ELSE 1000 END AS language_score,
+                    (
+                        CASE
+                            WHEN lower(vernacular_name) = lower(?) THEN 0
+                            WHEN substr(lower(vernacular_name), 1, length(?)) = lower(?) THEN 2
+                            ELSE 3
+                        END * 100
+                    ) + CASE language_code {language_case} ELSE 1000 END AS score
+                FROM taxonomy_vernacular_names_fts
+                WHERE vernacular_name MATCH ?
+                  AND language_code IN ({", ".join("?" for _ in requested_languages)})
+            )
+            ORDER BY name_score, language_score, lower(vernacular_name), taxon_id
+            LIMIT ?
+            """,
+            (
+                query,
+                query,
+                query,
+                *language_values.keys(),
+                query,
+                query,
+                query,
+                *language_values.keys(),
+                fts_query,
+                *requested_languages,
+                limit,
+            ),
+        ).fetchall()
+
+        return _search_matches_from_rows(rows)
+
     def close(self) -> None:
         if self._connection is not None:
             self._connection.close()
@@ -159,3 +288,19 @@ class SQLiteTaxonomyStore:
             self._connection.execute("PRAGMA query_only = ON")
 
         return self._connection
+
+
+def _to_prefix_fts_query(query: str) -> str:
+    terms = re.findall(r"\w+", query.lower())
+    return " ".join(f"{term}*" for term in terms)
+
+
+def _search_matches_from_rows(rows: Iterable[sqlite3.Row | tuple[object, ...]]):
+    return tuple(
+        TaxonomySearchMatch(
+            taxon_id=int(row[0]),
+            matched_name=str(row[1]),
+            score=int(row[2]),
+        )
+        for row in rows
+    )

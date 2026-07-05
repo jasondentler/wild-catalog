@@ -6,9 +6,36 @@ from fastapi.testclient import TestClient
 
 from wild_catalog.api import app as app_module
 from wild_catalog.api.app import app
-from wild_catalog.api.dependencies import get_identify_pipeline, get_settings
+from wild_catalog.api.dependencies import (
+    get_identify_pipeline,
+    get_settings,
+    get_taxonomy_service,
+)
 from wild_catalog.core.settings import Settings
 from wild_catalog.identify_pipeline.identify_result import IdentifyResult
+from wild_catalog.taxonomy import TaxonomySearchResult
+
+
+@pytest.fixture(autouse=True)
+def _use_default_upload_limit(monkeypatch: pytest.MonkeyPatch):
+    settings_from_env = staticmethod(lambda: Settings(max_upload_bytes=100000000))
+    monkeypatch.setattr(
+        app_module.Settings,
+        "from_env",
+        settings_from_env,
+    )
+    monkeypatch.setattr(
+        app_module.limit_content_length.__globals__["Settings"],
+        "from_env",
+        settings_from_env,
+    )
+    get_settings.cache_clear()
+    get_identify_pipeline.cache_clear()
+    app.middleware_stack = None
+    yield
+    get_identify_pipeline.cache_clear()
+    get_settings.cache_clear()
+    app.middleware_stack = None
 
 
 def test_health_returns_ok() -> None:
@@ -184,6 +211,144 @@ def test_identify_openapi_includes_upload_content_types() -> None:
             },
         }
     ]
+
+
+class DummyTaxonomyService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str | None, tuple[str, ...]]] = []
+
+    def search(self, query, *, field=None, language_preferences=("en-US",)):
+        self.calls.append((query, field, language_preferences))
+        if query.lower() == "missing":
+            return ()
+
+        return (
+            TaxonomySearchResult(
+                taxonomy=("Animalia", "Chordata", "Aves"),
+                taxonomy_rank_names=("kingdom", "phylum", "class"),
+                taxonomy_common_names=("Animals", "Chordates", "Birds"),
+            ),
+        )
+
+
+def test_search_endpoint_uses_query_and_accept_language_preferences() -> None:
+    service = DummyTaxonomyService()
+    client = TestClient(app)
+    app.dependency_overrides[get_taxonomy_service] = lambda: service
+
+    try:
+        response = client.get(
+            "/search",
+            params={"query": "osprey"},
+            headers={"accept-language": "en-US;q=0.8, es-MX;q=0.9"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "total_items": 1,
+        "items": [
+            {
+                "taxonomy": ["Animalia", "Chordata", "Aves"],
+                "taxonomy_rank_names": ["kingdom", "phylum", "class"],
+                "taxonomy_common_names": ["Animals", "Chordates", "Birds"],
+            }
+        ],
+    }
+    assert service.calls == [("osprey", None, ("es-MX", "en-US"))]
+
+
+def test_search_endpoint_supports_aliases_and_field_filter() -> None:
+    service = DummyTaxonomyService()
+    client = TestClient(app)
+    app.dependency_overrides[get_taxonomy_service] = lambda: service
+
+    try:
+        response = client.get("/search", params={"q": "Corvidae", "f": "scientific"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert service.calls == [("Corvidae", "scientific", ("en-US",))]
+
+
+def test_search_endpoint_returns_empty_results() -> None:
+    service = DummyTaxonomyService()
+    client = TestClient(app)
+    app.dependency_overrides[get_taxonomy_service] = lambda: service
+
+    try:
+        response = client.get("/search", params={"query": "missing", "field": "common"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {"total_items": 0, "items": []}
+    assert service.calls == [("missing", "common", ("en-US",))]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"query": "osprey", "q": "hawk"},
+        {"query": "osprey", "field": "common", "f": "scientific"},
+        {},
+        {"query": "   "},
+        {"query": "osprey", "field": "invalid"},
+    ],
+)
+def test_search_endpoint_rejects_bad_requests(params: dict[str, str]) -> None:
+    client = TestClient(app)
+    app.dependency_overrides[get_taxonomy_service] = lambda: DummyTaxonomyService()
+
+    try:
+        response = client.get("/search", params=params)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "bad_request"
+
+
+def test_search_endpoint_rejects_invalid_accept_language() -> None:
+    client = TestClient(app)
+    app.dependency_overrides[get_taxonomy_service] = lambda: DummyTaxonomyService()
+
+    try:
+        response = client.get(
+            "/search",
+            params={"query": "osprey"},
+            headers={"accept-language": "en-US;q=bad"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "content_language_invalid"
+
+
+def test_search_openapi_includes_parameters_and_response_schema() -> None:
+    client = TestClient(app)
+    app.openapi_schema = None
+
+    schema = client.get("/openapi.json").json()
+    search_operation = schema["paths"]["/search"]["get"]
+    parameters = {
+        (parameter["name"], parameter["in"]): parameter
+        for parameter in search_operation["parameters"]
+    }
+
+    assert ("query", "query") in parameters
+    assert ("q", "query") in parameters
+    assert ("field", "query") in parameters
+    assert ("f", "query") in parameters
+    assert ("accept-language", "header") in parameters
+    assert "top 20 matches" in search_operation["description"]
+    assert search_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/TaxonomySearchResponse"}
+
 
 @pytest.mark.parametrize(
     ("content_type", "request_kwargs"),

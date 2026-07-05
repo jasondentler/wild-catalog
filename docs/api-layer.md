@@ -5,6 +5,7 @@ The API layer has the following endpoints:
 * `GET /health`
 * `GET /openapi.json`
 * `POST /identify`
+* `GET /search?q=<string>`
 
 ## GET /health
 
@@ -441,3 +442,109 @@ Content-Disposition: attachment; filename="detection_1.jpg"
 ```
 
 ___Note:___ The JSON responses above were pretty-printed. Whitespace may be omitted in the actual HTTP response. 
+
+
+## GET /search
+
+This endpoint searches the taxonomy data. Results are limited to the top 20
+matches.
+
+### Query String Parameters
+
+| Name     | Required? |             | Description              |
+|----------|-----------|-------------|--------------------------|
+| query, q | Required  | string      | The string to find       |
+| field, f | Optional  | string enum | `common` or `scientific` |
+
+Specify either `query` or `q`, not both. Specify either `field` or `f`, not both.
+Supplying both aliases for the same parameter returns `400 Bad Request`.
+
+### Headers
+
+| Name            | Required? | Description                                           |
+|-----------------|-----------|-------------------------------------------------------|
+| accept-language | Optional  | Common-name search and response language preferences. |
+
+`accept-language` accepts a language tag or comma-separated weighted list. When
+it is not set, the API uses `en-US`. Scientific-name searching is unaffected by
+the language header.
+
+### Examples
+
+`/search?query=osprey` searches common names and scientific names for the string `osprey`.
+
+`/search?query=osprey&field=common` searches only common names for the string `osprey`.
+
+`/search?q=Corvidae&field=scientific` searches scientific names for `corvidae`
+
+`/search?q=cormorant` with `Accept-Language: es-MX, en-US;q=0.8` searches
+Spanish and English common names, plus scientific names.
+
+
+### Response Example
+
+```json
+{
+  "total_items": 2,
+  "items": [
+    {
+      "taxonomy": [
+        "Animalia",
+        "Chordata",
+        "Aves",
+        "Passeriformes",
+        "Mimidae",
+        "Mimus",
+        "Mimus polyglottos"
+      ],
+      "taxonomy_rank_names": [
+        "kingdom",
+        "phylum",
+        "class",
+        "order",
+        "family",
+        "genus",
+        "species"
+      ],
+      "taxonomy_common_names": [
+        "Animals",
+        "Chordates",
+        "Birds",
+        "Perching Birds",
+        "Mockingbirds and Thrashers",
+        "Northern Mockingbirds",
+        "Northern Mockingbird"
+      ]
+    },
+    {
+      "taxonomy": [
+        "Animalia",
+        "Chordata",
+        "Aves",
+        "Passeriformes",
+        "Corvidae",
+        "Cyanocitta",
+        "Cyanocitta cristata"
+      ],
+      "taxonomy_rank_names": [
+        "kingdom",
+        "phylum",
+        "class",
+        "order",
+        "family",
+        "genus",
+        "species"
+      ],
+      "taxonomy_common_names": [
+        "Animals",
+        "Chordates",
+        "Birds",
+        "Perching Birds",
+        "Crows and Jays",
+        "Blue Jays",
+        "Blue Jay"
+      ]
+    }
+  ]
+}
+```

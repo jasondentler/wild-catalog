@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 
 from wild_catalog.api.app import app
 from wild_catalog.api.dependencies import get_identify_pipeline
-from wild_catalog.core.settings import Settings
 from wild_catalog.identify_pipeline.identify_result import IdentifyResult
 
 
@@ -16,10 +15,7 @@ def _set_max_upload_bytes(
     monkeypatch: pytest.MonkeyPatch,
     max_body_size: int,
 ) -> None:
-    monkeypatch.setattr(
-        "wild_catalog.api.app.Settings.from_env",
-        lambda: Settings(max_upload_bytes=max_body_size),
-    )
+    monkeypatch.setenv("WILD_CATALOG_MAX_UPLOAD_BYTES", str(max_body_size))
 
 
 def test_limit_content_length_middleware_allows_payloads_within_limit(
@@ -39,6 +35,7 @@ def test_limit_content_length_middleware_allows_payloads_within_limit(
             },
         )
     finally:
+        client.close()
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
@@ -50,14 +47,17 @@ def test_limit_content_length_middleware_rejects_payloads_over_limit(
     _set_max_upload_bytes(monkeypatch, max_body_size=4)
     client = TestClient(app)
 
-    response = client.post(
-        "/identify",
-        content=b"12345",
-        headers={
-            "content-type": "image/jpeg",
-            "x-filename": "too-large.jpg",
-        },
-    )
+    try:
+        response = client.post(
+            "/identify",
+            content=b"12345",
+            headers={
+                "content-type": "image/jpeg",
+                "x-filename": "too-large.jpg",
+            },
+        )
+    finally:
+        client.close()
 
     assert response.status_code == 413
     assert response.json()["detail"] == (

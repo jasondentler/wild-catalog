@@ -4,6 +4,8 @@ from wild_catalog.api.response_models import (
     IdentifiedObjectResponse,
     IdentifyResponse,
     PredictionResponse,
+    TaxonomySearchItem,
+    TaxonomySearchResponse,
 )
 
 
@@ -142,4 +144,24 @@ def test_identify_response_defaults_unknown_gps_to_none() -> None:
     assert response.model_dump() == {
         "gps_coordinates": None,
         "results": [],
+    }
+
+
+def test_taxonomy_search_response_serializes_api_shape() -> None:
+    item = TaxonomySearchItem(
+        taxonomy=["Animalia", "Chordata", "Aves"],
+        taxonomy_rank_names=["kingdom", "phylum", "class"],
+        taxonomy_common_names=["Animals", "Chordates", "Birds"],
+    )
+    response = TaxonomySearchResponse(total_items=1, items=[item])
+
+    assert response.model_dump() == {
+        "total_items": 1,
+        "items": [
+            {
+                "taxonomy": ["Animalia", "Chordata", "Aves"],
+                "taxonomy_rank_names": ["kingdom", "phylum", "class"],
+                "taxonomy_common_names": ["Animals", "Chordates", "Birds"],
+            }
+        ],
     }

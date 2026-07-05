@@ -24,6 +24,7 @@ def test_settings_from_env_uses_environment_overrides(
         "custom/geopackages",
     )
     monkeypatch.setenv("WILD_CATALOG_RESPONSE_ARCHIVE_DIR", "custom/responses")
+    monkeypatch.setenv("WILD_CATALOG_LANGUAGES", "en-US, es-MX")
 
     settings = Settings.from_env()
 
@@ -41,6 +42,7 @@ def test_settings_from_env_uses_environment_overrides(
     assert str(settings.range_store_database_path) == "custom/range-store.sqlite"
     assert str(settings.range_geopackage_download_dir) == "custom/geopackages"
     assert str(settings.response_archive_dir) == "custom/responses"
+    assert settings.taxonomy_languages == ("en-US", "es-MX")
 
 
 def test_settings_from_env_uses_defaults_when_env_is_missing(
@@ -60,6 +62,7 @@ def test_settings_from_env_uses_defaults_when_env_is_missing(
     monkeypatch.delenv("WILD_CATALOG_RANGE_STORE_DATABASE_PATH", raising=False)
     monkeypatch.delenv("WILD_CATALOG_RANGE_GEOPACKAGE_DOWNLOAD_DIR", raising=False)
     monkeypatch.delenv("WILD_CATALOG_RESPONSE_ARCHIVE_DIR", raising=False)
+    monkeypatch.delenv("WILD_CATALOG_LANGUAGES", raising=False)
 
     settings = Settings.from_env()
 
@@ -79,3 +82,4 @@ def test_settings_from_env_uses_defaults_when_env_is_missing(
     )
     assert str(settings.range_geopackage_download_dir) == "data/range-data/geopackages"
     assert str(settings.response_archive_dir) == "data/responses"
+    assert settings.taxonomy_languages == ()

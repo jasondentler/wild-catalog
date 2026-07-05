@@ -4,9 +4,11 @@ from contextlib import closing
 
 from wild_catalog.identify_pipeline.prediction import Prediction
 from wild_catalog.taxonomy import (
+    SEARCH_RESULT_LIMIT,
     SQLiteTaxonomyStore,
     TaxonomyService,
     import_taxonomy_archive,
+    import_taxonomy_archive_if_missing,
     vernacular_csv_files_for_languages,
 )
 
@@ -16,6 +18,14 @@ def test_vernacular_csv_files_for_languages_falls_back_to_base_language() -> Non
 
     assert ("en", "VernacularNames-english.csv") in files
     assert ("es", "VernacularNames-spanish.csv") in files
+
+
+def test_vernacular_csv_files_for_languages_defaults_to_all_supported_languages() -> None:
+    files = vernacular_csv_files_for_languages(())
+
+    assert ("en", "VernacularNames-english.csv") in files
+    assert ("es", "VernacularNames-spanish.csv") in files
+    assert ("zh-cn", "VernacularNames-chinese-simplified.csv") in files
 
 
 def test_import_taxonomy_archive_loads_taxa_and_requested_vernacular_names(
@@ -60,6 +70,126 @@ def test_import_taxonomy_archive_loads_taxa_and_requested_vernacular_names(
         (418151, "en", "Chapman's Zebra"),
         (418151, "es", "Cebra de Chapman"),
     ]
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        fts_tables = {
+            row[0]
+            for row in connection.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table'
+                  AND name IN (
+                    'taxonomy_taxa_fts',
+                    'taxonomy_vernacular_names_fts'
+                  )
+                """
+            ).fetchall()
+        }
+        taxa_indexed = connection.execute(
+            "SELECT COUNT(*) FROM taxonomy_taxa_fts"
+        ).fetchone()[0]
+        vernacular_names_indexed = connection.execute(
+            "SELECT COUNT(*) FROM taxonomy_vernacular_names_fts"
+        ).fetchone()[0]
+
+    assert fts_tables == {"taxonomy_taxa_fts", "taxonomy_vernacular_names_fts"}
+    assert taxa_indexed == result.taxa_imported
+    assert vernacular_names_indexed == result.vernacular_names_imported
+
+
+def test_import_taxonomy_archive_defaults_to_all_supported_languages(
+    tmp_path,
+) -> None:
+    archive_path = tmp_path / "taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_taxonomy_archive(archive_path)
+
+    result = import_taxonomy_archive(database_path, archive_path)
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        languages = {
+            row[0]
+            for row in connection.execute(
+                "SELECT DISTINCT language_code FROM taxonomy_vernacular_names"
+            ).fetchall()
+        }
+        chinese_name = connection.execute(
+            """
+            SELECT vernacular_name
+            FROM taxonomy_vernacular_names
+            WHERE taxon_id = 43335
+              AND language_code = 'zh-cn'
+            """
+        ).fetchone()[0]
+
+    assert result.taxa_imported == 8
+    assert result.vernacular_names_imported == 24
+    assert {"en", "es", "zh-cn"}.issubset(languages)
+    assert chinese_name == "平原斑马"
+
+
+def test_import_taxonomy_archive_if_missing_repairs_missing_search_indexes(
+    tmp_path,
+) -> None:
+    archive_path = tmp_path / "taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_taxonomy_archive(archive_path)
+    import_taxonomy_archive(database_path, archive_path, languages=("en-US",))
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        with connection:
+            connection.execute("DROP TABLE taxonomy_taxa_fts")
+            connection.execute("DROP TABLE taxonomy_vernacular_names_fts")
+
+    result = import_taxonomy_archive_if_missing(database_path, tmp_path / "downloads")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        taxa_indexed = connection.execute(
+            "SELECT COUNT(*) FROM taxonomy_taxa_fts"
+        ).fetchone()[0]
+        vernacular_names_indexed = connection.execute(
+            "SELECT COUNT(*) FROM taxonomy_vernacular_names_fts"
+        ).fetchone()[0]
+
+    assert result.taxa_imported == 0
+    assert result.vernacular_names_imported == 0
+    assert taxa_indexed == 8
+    assert vernacular_names_indexed == 8
+
+
+def test_import_taxonomy_archive_if_missing_does_not_rebuild_existing_store_for_languages(
+    tmp_path,
+) -> None:
+    archive_path = tmp_path / "taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_taxonomy_archive(archive_path)
+    import_taxonomy_archive(database_path, archive_path, languages=("en-US",))
+
+    result = import_taxonomy_archive_if_missing(
+        database_path,
+        tmp_path / "downloads",
+        archive_url="https://example.test/taxonomy.dwca.zip",
+        languages=("en-US", "zh-CN"),
+    )
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        metadata_languages = connection.execute(
+            "SELECT value FROM taxonomy_store_metadata WHERE key = 'languages'"
+        ).fetchone()[0]
+        chinese_name = connection.execute(
+            """
+            SELECT vernacular_name
+            FROM taxonomy_vernacular_names
+            WHERE taxon_id = 43335
+              AND language_code = 'zh-cn'
+            """
+        ).fetchone()
+
+    assert result.taxa_imported == 0
+    assert result.vernacular_names_imported == 0
+    assert metadata_languages == "en-us"
+    assert chinese_name is None
 
 
 def test_taxonomy_service_enriches_prediction_lineage_and_common_names(tmp_path) -> None:
@@ -240,10 +370,196 @@ def test_taxonomy_service_pads_prediction_fields_when_lineage_is_missing(
     assert enriched.taxonomy_common_names == ("Animals", "Blackbirds", "")
 
 
+def test_taxonomy_store_searches_scientific_names_with_fts_prefix_matching(
+    tmp_path,
+) -> None:
+    archive_path = tmp_path / "taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_taxonomy_archive(archive_path)
+    import_taxonomy_archive(database_path, archive_path)
+
+    with SQLiteTaxonomyStore(database_path) as store:
+        matches = store.search_scientific_names("Equus", limit=10)
+
+    assert [match.taxon_id for match in matches[:3]] == [43329, 43335, 418151]
+
+
+def test_taxonomy_store_searches_common_names_by_language(tmp_path) -> None:
+    archive_path = tmp_path / "taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_taxonomy_archive(archive_path)
+    import_taxonomy_archive(
+        database_path,
+        archive_path,
+        languages=("en-US", "es-MX"),
+    )
+
+    with SQLiteTaxonomyStore(database_path) as store:
+        spanish_matches = store.search_common_names(
+            "Cebra de",
+            language_preferences=("es", "en"),
+            limit=10,
+        )
+        english_matches = store.search_common_names(
+            "Cebra de",
+            language_preferences=("en",),
+            limit=10,
+        )
+
+    assert [match.taxon_id for match in spanish_matches] == [418151, 43335]
+    assert english_matches == ()
+
+
+def test_taxonomy_service_searches_chinese_common_names(tmp_path) -> None:
+    archive_path = tmp_path / "taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_taxonomy_archive(archive_path)
+    import_taxonomy_archive(
+        database_path,
+        archive_path,
+        languages=("en-US", "zh-CN"),
+    )
+
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        results = service.search(
+            "平原斑马",
+            language_preferences=("zh-CN",),
+        )
+
+    assert len(results) == 1
+    assert results[0].taxonomy[-1] == "quagga"
+    assert results[0].taxonomy_common_names[-1] == "平原斑马"
+
+
+def test_taxonomy_service_does_not_search_english_common_names_for_spanish_request(
+    tmp_path,
+) -> None:
+    archive_path = tmp_path / "taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_taxonomy_archive(archive_path)
+    import_taxonomy_archive(
+        database_path,
+        archive_path,
+        languages=("en-US", "es-MX"),
+    )
+
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        results = service.search(
+            "Plains",
+            field="common",
+            language_preferences=("es-MX",),
+        )
+
+    assert results == ()
+
+
+def test_taxonomy_service_search_normalizes_names_like_identify(tmp_path) -> None:
+    archive_path = tmp_path / "mixed-case-taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_mixed_case_taxonomy_archive(archive_path)
+    import_taxonomy_archive(database_path, archive_path, languages=("en-US",))
+
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        results = service.search(
+            "PHOENICEUS",
+            field="scientific",
+            language_preferences=("en-US",),
+        )
+
+    assert len(results) == 1
+    assert results[0].taxonomy == ("Animalia", "Agelaius", "phoeniceus")
+    assert results[0].taxonomy_common_names == (
+        "Animals",
+        "Blackbirds And Orioles",
+        "Black-Bellied Bewick's Wren",
+    )
+
+
+def test_taxonomy_service_search_resolves_accepted_taxa_and_localized_names(
+    tmp_path,
+) -> None:
+    archive_path = tmp_path / "taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_taxonomy_archive(archive_path, include_accepted_synonym=True)
+    import_taxonomy_archive(
+        database_path,
+        archive_path,
+        languages=("en-US", "es-MX"),
+    )
+
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        results = service.search(
+            "Quagga antigua",
+            field="scientific",
+            language_preferences=("es-MX",),
+        )
+
+    assert len(results) == 1
+    assert results[0].taxonomy[-1] == "quagga"
+    assert results[0].taxonomy_rank_names[-1] == "species"
+    assert results[0].taxonomy_common_names[-1] == "Cebra De Sabana"
+
+
+def test_taxonomy_service_search_combines_common_and_scientific_results(
+    tmp_path,
+) -> None:
+    archive_path = tmp_path / "taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_taxonomy_archive(archive_path)
+    import_taxonomy_archive(
+        database_path,
+        archive_path,
+        languages=("en-US",),
+    )
+
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        common_results = service.search(
+            "Plains",
+            field="common",
+            language_preferences=("en-US",),
+        )
+        scientific_results = service.search(
+            "Equus",
+            field="scientific",
+            language_preferences=("es-MX",),
+        )
+        english_scientific_results = service.search(
+            "Equus",
+            field="scientific",
+            language_preferences=("en-US",),
+        )
+        combined_results = service.search(
+            "Equus",
+            language_preferences=("en-US",),
+        )
+
+    assert [result.taxonomy[-1] for result in common_results] == ["quagga"]
+    assert scientific_results[0].taxonomy[-1] == "Equus"
+    assert scientific_results == english_scientific_results
+    assert combined_results[0].taxonomy[-1] == "Equus"
+
+
+def test_taxonomy_service_search_limits_results_to_top_twenty(tmp_path) -> None:
+    archive_path = tmp_path / "many-taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_many_search_result_archive(archive_path, count=25)
+    import_taxonomy_archive(database_path, archive_path, languages=("en-US",))
+
+    with TaxonomyService(SQLiteTaxonomyStore(database_path)) as service:
+        results = service.search(
+            "Searchbird",
+            field="common",
+            language_preferences=("en-US",),
+        )
+
+    assert len(results) == SEARCH_RESULT_LIMIT
+
+
 def _create_taxonomy_archive(
     archive_path,
     *,
     include_species_english: bool = True,
+    include_accepted_synonym: bool = False,
 ) -> None:
     taxa_rows = [
         "taxonID,parentNameUsageID,acceptedNameUsageID,scientificName,taxonRank",
@@ -256,6 +572,8 @@ def _create_taxonomy_archive(
         "43335,43329,,Equus quagga,species",
         "418151,43335,,Equus quagga ssp. chapmani,subspecies",
     ]
+    if include_accepted_synonym:
+        taxa_rows.append("900001,43329,43335,Equus quagga antigua,species")
     english_names = [
         "taxonID,vernacularName,language",
         "1,Animals,en",
@@ -279,11 +597,26 @@ def _create_taxonomy_archive(
         "43335,Cebra de Sabana,es",
         "418151,Cebra de Chapman,es",
     ]
+    chinese_names = [
+        "taxonID,vernacularName,language",
+        "1,动物,zh-CN",
+        "2,脊索动物,zh-CN",
+        "40151,哺乳动物,zh-CN",
+        "43327,奇蹄目,zh-CN",
+        "43328,马科,zh-CN",
+        "43329,马属,zh-CN",
+        "43335,平原斑马,zh-CN",
+        "418151,查普曼斑马,zh-CN",
+    ]
 
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.writestr("taxa.csv", "\n".join(taxa_rows) + "\n")
         archive.writestr("VernacularNames-english.csv", "\n".join(english_names) + "\n")
         archive.writestr("VernacularNames-spanish.csv", "\n".join(spanish_names) + "\n")
+        archive.writestr(
+            "VernacularNames-chinese-simplified.csv",
+            "\n".join(chinese_names) + "\n",
+        )
 
 
 def _create_bird_taxonomy_archive(archive_path) -> None:
@@ -311,6 +644,55 @@ def _create_bird_taxonomy_archive(archive_path) -> None:
         "9740,Agelaius Blackbirds,en",
         "9744,Red-winged Blackbird,en",
     ]
+
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("taxa.csv", "\n".join(taxa_rows) + "\n")
+        archive.writestr("VernacularNames-english.csv", "\n".join(english_names) + "\n")
+
+
+def _create_mixed_case_taxonomy_archive(archive_path) -> None:
+    taxa_rows = [
+        "taxonID,parentNameUsageID,acceptedNameUsageID,scientificName,taxonRank",
+        "1,,,animalia,kingdom",
+        "2,1,,AGELAIUS,genus",
+        "3,2,,AGELAIUS PHOENICEUS,species",
+    ]
+    english_names = [
+        "taxonID,vernacularName,language",
+        "1,animals,en",
+        "2,blackbirds and orioles,en",
+        "3,black-bellied bewick's wren,en",
+    ]
+
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("taxa.csv", "\n".join(taxa_rows) + "\n")
+        archive.writestr("VernacularNames-english.csv", "\n".join(english_names) + "\n")
+
+
+def _create_many_search_result_archive(archive_path, *, count: int) -> None:
+    taxa_rows = [
+        "taxonID,parentNameUsageID,acceptedNameUsageID,scientificName,taxonRank",
+        "1,,,Animalia,kingdom",
+        "2,1,,Chordata,phylum",
+        "3,2,,Aves,class",
+        "4,3,,Passeriformes,order",
+        "5,4,,Icteridae,family",
+        "6,5,,Agelaius,genus",
+    ]
+    english_names = [
+        "taxonID,vernacularName,language",
+        "1,Animals,en",
+        "2,Chordates,en",
+        "3,Birds,en",
+        "4,Perching Birds,en",
+        "5,New World Blackbirds and Orioles,en",
+        "6,Agelaius Blackbirds,en",
+    ]
+
+    for index in range(count):
+        taxon_id = 1000 + index
+        taxa_rows.append(f"{taxon_id},6,,Agelaius searchbird{index},species")
+        english_names.append(f"{taxon_id},Searchbird {index},en")
 
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.writestr("taxa.csv", "\n".join(taxa_rows) + "\n")

@@ -3,22 +3,34 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, BinaryIO
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import Response
 
 from wild_catalog.api.content_negotiation import select_identify_response_format
-from wild_catalog.api.dependencies import get_identify_pipeline, get_settings
+from wild_catalog.api.dependencies import (
+    get_identify_pipeline,
+    get_settings,
+    get_taxonomy_service,
+)
 from wild_catalog.api.errors import register_exception_handlers
 from wild_catalog.api.logging import log_identify_request
 from wild_catalog.api.multipart_request_mapper import create_multipart_form_command
 from wild_catalog.api.openapi_schemas import IDENTIFY_REQUEST_OPENAPI_EXTRA
 from wild_catalog.api.response_archive import IdentifyResponseArchive
 from wild_catalog.api.response_mapper import map_identify_result_payload, map_response
-from wild_catalog.api.response_models import IdentifyResponse
-from wild_catalog.api.simple_request_mapper import create_request_body_command
+from wild_catalog.api.response_models import (
+    IdentifyResponse,
+    TaxonomySearchItem,
+    TaxonomySearchResponse,
+)
+from wild_catalog.api.simple_request_mapper import (
+    create_request_body_command,
+    parse_accept_language_header_preferences,
+)
 from wild_catalog.core.errors import (
+    BadRequestError,
     ContentLengthHeaderIsNotNumberError,
     ContentLengthHeaderMissingError,
     PayloadTooLargeError,
@@ -28,6 +40,7 @@ from wild_catalog.identify_pipeline.identify_command import IdentifyCommand
 from wild_catalog.identify_pipeline.identify_pipeline import IdentifyPipeline
 from wild_catalog.range_data import import_inaturalist_open_range_data_if_missing
 from wild_catalog.taxonomy import import_taxonomy_archive_if_missing
+from wild_catalog.taxonomy.taxonomy_service import SearchField, TaxonomyService
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -98,6 +111,63 @@ async def limit_content_length(request: Request, call_next):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get(
+    "/search",
+    response_model=TaxonomySearchResponse,
+    description="Searches taxonomy data. Results are limited to the top 20 matches.",
+)
+def search(
+    taxonomy_service: Annotated[TaxonomyService, Depends(get_taxonomy_service)],
+    query: Annotated[str | None, Query(description="Taxonomy search string.")] = None,
+    q: Annotated[str | None, Query(description="Alias for query.")] = None,
+    field: Annotated[
+        SearchField | None,
+        Query(description="Restrict search to common or scientific names."),
+    ] = None,
+    f: Annotated[
+        SearchField | None,
+        Query(description="Alias for field."),
+    ] = None,
+    accept_language: Annotated[
+        str | None,
+        Header(
+            alias="accept-language",
+            description="Language preference for common-name search and response names.",
+        ),
+    ] = None,
+) -> TaxonomySearchResponse:
+    if query is not None and q is not None:
+        raise BadRequestError("Specify either query or q, not both.")
+
+    if field is not None and f is not None:
+        raise BadRequestError("Specify either field or f, not both.")
+
+    search_query = query if query is not None else q
+    search_field = field if field is not None else f
+    if search_query is None or not search_query.strip():
+        raise BadRequestError("Search query is required.")
+
+    language_preferences = parse_accept_language_header_preferences(accept_language)
+    if not language_preferences:
+        language_preferences = ("en-US",)
+
+    results = taxonomy_service.search(
+        search_query,
+        field=search_field,
+        language_preferences=language_preferences,
+    )
+
+    items = [
+        TaxonomySearchItem(
+            taxonomy=list(result.taxonomy),
+            taxonomy_rank_names=list(result.taxonomy_rank_names),
+            taxonomy_common_names=list(result.taxonomy_common_names),
+        )
+        for result in results
+    ]
+    return TaxonomySearchResponse(total_items=len(items), items=items)
 
 
 @app.post(

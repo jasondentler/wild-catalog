@@ -30,6 +30,12 @@ def get_settings() -> Settings:
 
 
 @lru_cache(maxsize=1)
+def get_taxonomy_service() -> TaxonomyService:
+    settings = get_settings()
+    return TaxonomyService(SQLiteTaxonomyStore(settings.taxonomy_store_database_path))
+
+
+@lru_cache(maxsize=1)
 def get_identify_pipeline() -> IdentifyPipeline:
     settings = get_settings()
     conversion = ImageConversionService(settings)

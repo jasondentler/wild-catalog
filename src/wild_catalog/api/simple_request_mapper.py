@@ -33,8 +33,18 @@ async def create_request_body_command(
 
 
 def parse_accept_language_header(accept_language: str | None) -> str | None:
-    if accept_language is None:
+    preferences = parse_accept_language_header_preferences(accept_language)
+    if not preferences:
         return None
+
+    return preferences[0]
+
+
+def parse_accept_language_header_preferences(
+    accept_language: str | None,
+) -> tuple[str, ...]:
+    if accept_language is None:
+        return ()
 
     if accept_language.strip() == "":
         raise InvalidContentLanguageError(
@@ -42,8 +52,8 @@ def parse_accept_language_header(accept_language: str | None) -> str | None:
         )
 
     parsed_langs = []
-    for item in accept_language.split(","):
-        parts = item.strip().split(";")
+    for index, item in enumerate(accept_language.split(",")):
+        parts = [part.strip() for part in item.strip().split(";")]
         tag = parts[0]
         q = 1.0  # Default weight
 
@@ -52,22 +62,40 @@ def parse_accept_language_header(accept_language: str | None) -> str | None:
                 debug_detail=f"Invalid accept-language header [{accept_language}]"
             )
 
-        if len(parts) > 1 and parts[1].startswith("q="):
+        if len(parts) > 2:
+            raise InvalidContentLanguageError(
+                debug_detail=f"Invalid accept-language header [{accept_language}]"
+            )
+
+        if len(parts) > 1:
+            if not parts[1].startswith("q="):
+                raise InvalidContentLanguageError(
+                    debug_detail=f"Invalid accept-language header [{accept_language}]"
+                )
             try:
                 q = float(parts[1].split("=")[1])
             except ValueError as err:
                 raise InvalidContentLanguageError(
                     debug_detail=f"Invalid accept-language header [{accept_language}]"
                 ) from err
+            if not 0 <= q <= 1:
+                raise InvalidContentLanguageError(
+                    debug_detail=f"Invalid accept-language header [{accept_language}]"
+                )
 
-        parsed_langs.append((tag, q))
+        parsed_langs.append((tag, q, index))
 
     if not parsed_langs:
         raise InvalidContentLanguageError(  # pragma: no cover
             debug_detail=f"Invalid accept-language header [{accept_language}]"
         )
 
-    # Sort by weight descending
-    parsed_langs.sort(key=lambda x: x[1], reverse=True)
+    parsed_langs.sort(key=lambda x: (-x[1], x[2]))
 
-    return parsed_langs[0][0]
+    preferences = tuple(tag for tag, _q, _index in parsed_langs if _q > 0)
+    if not preferences:
+        raise InvalidContentLanguageError(
+            debug_detail=f"Invalid accept-language header [{accept_language}]"
+        )
+
+    return preferences

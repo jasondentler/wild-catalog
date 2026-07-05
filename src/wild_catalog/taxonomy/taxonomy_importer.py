@@ -16,7 +16,7 @@ from wild_catalog.wildlife_detection.model_download import download_file_with_pr
 logger = logging.getLogger("uvicorn.error")
 
 DEFAULT_TAXONOMY_DWCA_URL = "https://www.inaturalist.org/taxa/inaturalist-taxonomy.dwca.zip"
-DEFAULT_TAXONOMY_LANGUAGES = ("en-US",)
+DEFAULT_TAXONOMY_LANGUAGES = ()
 
 
 def _normalize_language_code(language: str) -> str:
@@ -44,10 +44,26 @@ def import_taxonomy_archive_if_missing(
 ) -> TaxonomyImportResult:
     target_path = Path(target_database_path)
     if target_path.exists():
+        ensure_taxonomy_search_indexes(target_path)
         logger.info("iNaturalist taxonomy store already exists at %s", target_path)
         return TaxonomyImportResult(taxa_imported=0, vernacular_names_imported=0)
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
+    return _build_taxonomy_store(
+        target_path,
+        download_dir,
+        archive_url=archive_url,
+        languages=languages,
+    )
+
+
+def _build_taxonomy_store(
+    target_path: Path,
+    download_dir: str | Path,
+    *,
+    archive_url: str,
+    languages: Iterable[str],
+) -> TaxonomyImportResult:
     download_path = Path(download_dir)
     download_path.mkdir(parents=True, exist_ok=True)
     archive_path = download_file_with_progress(
@@ -98,6 +114,22 @@ def create_taxonomy_store_schema(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_taxonomy_vernacular_names_lookup
         ON taxonomy_vernacular_names (taxon_id, language_code, position);
 
+        CREATE VIRTUAL TABLE IF NOT EXISTS taxonomy_taxa_fts
+        USING fts5(
+            taxon_id UNINDEXED,
+            scientific_name,
+            display_name,
+            tokenize = 'unicode61'
+        );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS taxonomy_vernacular_names_fts
+        USING fts5(
+            taxon_id UNINDEXED,
+            language_code UNINDEXED,
+            vernacular_name,
+            tokenize = 'unicode61'
+        );
+
         CREATE TABLE IF NOT EXISTS taxonomy_store_metadata (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -111,6 +143,8 @@ def _drop_taxonomy_store_schema(connection: sqlite3.Connection) -> None:
         """
         DROP TABLE IF EXISTS taxonomy_vernacular_names;
         DROP TABLE IF EXISTS taxonomy_taxa;
+        DROP TABLE IF EXISTS taxonomy_vernacular_names_fts;
+        DROP TABLE IF EXISTS taxonomy_taxa_fts;
         DROP TABLE IF EXISTS taxonomy_store_metadata;
         """
     )
@@ -122,6 +156,7 @@ def import_taxonomy_archive(
     *,
     languages: Iterable[str] = DEFAULT_TAXONOMY_LANGUAGES,
 ) -> TaxonomyImportResult:
+    language_preferences = _resolved_language_preferences(languages)
     with closing(sqlite3.connect(target_database_path)) as connection:
         _configure_connection(connection)
         with connection:
@@ -131,8 +166,9 @@ def import_taxonomy_archive(
             vernacular_names_imported = _import_vernacular_names(
                 connection,
                 archive_path,
-                languages,
+                language_preferences,
             )
+            _populate_search_indexes(connection)
             connection.executemany(
                 """
                 INSERT INTO taxonomy_store_metadata (key, value)
@@ -141,10 +177,7 @@ def import_taxonomy_archive(
                 """,
                 [
                     ("source", str(archive_path)),
-                    (
-                        "languages",
-                        ",".join(_normalized_language_preferences(languages)),
-                    ),
+                    ("languages", ",".join(language_preferences)),
                 ],
             )
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -155,11 +188,23 @@ def import_taxonomy_archive(
     )
 
 
-def vernacular_csv_files_for_languages(languages: Iterable[str]) -> tuple[tuple[str, str], ...]:
+def ensure_taxonomy_search_indexes(database_path: str | Path) -> None:
+    with closing(sqlite3.connect(database_path)) as connection:
+        _configure_connection(connection)
+        with connection:
+            create_taxonomy_store_schema(connection)
+            if not _search_indexes_are_current(connection):
+                _populate_search_indexes(connection)
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+
+def vernacular_csv_files_for_languages(
+    languages: Iterable[str],
+) -> tuple[tuple[str, str], ...]:
     files: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
 
-    for language in _normalized_language_preferences(languages):
+    for language in _resolved_language_preferences(languages):
         resolved_language = language
         filenames = _LANGUAGE_TO_CSV_FILES.get(language)
         if filenames is None and "-" in language:
@@ -212,6 +257,47 @@ def _import_taxa(connection: sqlite3.Connection, archive_path: str | Path) -> in
         rows,
     )
     return len(rows)
+
+
+def _populate_search_indexes(connection: sqlite3.Connection) -> None:
+    connection.execute("DELETE FROM taxonomy_taxa_fts")
+    connection.execute("DELETE FROM taxonomy_vernacular_names_fts")
+    connection.execute(
+        """
+        INSERT INTO taxonomy_taxa_fts (taxon_id, scientific_name, display_name)
+        SELECT taxon_id, scientific_name, display_name
+        FROM taxonomy_taxa
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO taxonomy_vernacular_names_fts (
+            taxon_id,
+            language_code,
+            vernacular_name
+        )
+        SELECT taxon_id, language_code, vernacular_name
+        FROM taxonomy_vernacular_names
+        """
+    )
+
+
+def _search_indexes_are_current(connection: sqlite3.Connection) -> bool:
+    try:
+        taxa_count = connection.execute("SELECT COUNT(*) FROM taxonomy_taxa").fetchone()[0]
+        taxa_fts_count = connection.execute(
+            "SELECT COUNT(*) FROM taxonomy_taxa_fts"
+        ).fetchone()[0]
+        vernacular_count = connection.execute(
+            "SELECT COUNT(*) FROM taxonomy_vernacular_names"
+        ).fetchone()[0]
+        vernacular_fts_count = connection.execute(
+            "SELECT COUNT(*) FROM taxonomy_vernacular_names_fts"
+        ).fetchone()[0]
+    except sqlite3.OperationalError:
+        return False
+
+    return taxa_count == taxa_fts_count and vernacular_count == vernacular_fts_count
 
 
 def _import_vernacular_names(
@@ -328,6 +414,13 @@ def _normalized_language_preferences(languages: Iterable[str]) -> tuple[str, ...
             seen.add(code)
             normalized.append(code)
     return tuple(normalized)
+
+
+def _resolved_language_preferences(languages: Iterable[str]) -> tuple[str, ...]:
+    normalized = _normalized_language_preferences(languages)
+    if normalized:
+        return normalized
+    return tuple(_LANGUAGE_TO_CSV_FILES)
 
 
 def _filename_from_url(url: str) -> str:
