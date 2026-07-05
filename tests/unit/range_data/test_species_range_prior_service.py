@@ -97,6 +97,37 @@ def test_generate_prior_mask_applies_epsilon_to_absent_taxa() -> None:
     assert torch.equal(result.values, torch.tensor([1.0, 0.05, 1.0]))
 
 
+def test_get_present_taxon_ids_returns_exact_point_membership() -> None:
+    inside_polygon = Polygon(
+        [
+            (-95.0, 29.0),
+            (-94.0, 29.0),
+            (-94.0, 30.0),
+            (-95.0, 30.0),
+            (-95.0, 29.0),
+        ]
+    )
+    outside_polygon = Polygon(
+        [
+            (-80.0, 40.0),
+            (-79.0, 40.0),
+            (-79.0, 41.0),
+            (-80.0, 41.0),
+            (-80.0, 40.0),
+        ]
+    )
+    service = SpeciesRangePriorService(
+        _settings(),
+        store=_FakeStore([(10, inside_polygon.wkb), (20, outside_polygon.wkb)]),
+    )
+
+    result = service.get_present_taxon_ids(
+        GpsCoordinates(latitude=29.5, longitude=-94.5),
+    )
+
+    assert result == {10}
+
+
 def test_generate_prior_mask_uses_cached_presence_without_querying_store() -> None:
     cache = PresenceCache(max_entries=2)
     gps_coordinates = GpsCoordinates(latitude=29.5, longitude=-94.5)
@@ -118,6 +149,26 @@ def test_generate_prior_mask_uses_cached_presence_without_querying_store() -> No
     result = service.generate_prior_mask(gps_coordinates, class_index)
 
     assert torch.equal(result.values, torch.tensor([0.01, 1.0]))
+    assert store.point_queries == []
+
+
+def test_get_present_taxon_ids_uses_cached_presence_without_querying_store() -> None:
+    cache = PresenceCache(max_entries=2)
+    gps_coordinates = GpsCoordinates(latitude=29.5, longitude=-94.5)
+    cache.put(
+        PresenceCache.presence_cache_key(gps_coordinates, h3_resolution=7),
+        {20},
+    )
+    store = _FakeStore([])
+    service = SpeciesRangePriorService(
+        _settings(range_prior_cache_enabled=True),
+        store=store,
+        cache=cache,
+    )
+
+    result = service.get_present_taxon_ids(gps_coordinates)
+
+    assert result == {20}
     assert store.point_queries == []
 
 

@@ -451,13 +451,19 @@ matches.
 
 ### Query String Parameters
 
-| Name     | Required? |             | Description              |
-|----------|-----------|-------------|--------------------------|
-| query, q | Required  | string      | The string to find       |
-| field, f | Optional  | string enum | `common` or `scientific` |
+| Name           | Required? |             | Description                     |
+|----------------|-----------|-------------|---------------------------------|
+| query, q       | Required  | string      | The string to find              |
+| field, f       | Optional  | string enum | `common` or `scientific`        |
+| latitude, lat  | Optional  | float       | GPS latitude to filter results  |
+| longitude, lng | Optional  | float       | GPS longitude to filter results |
 
-Specify either `query` or `q`, not both. Specify either `field` or `f`, not both.
-Supplying both aliases for the same parameter returns `400 Bad Request`.
+* Specify either `query` or `q`, not both. 
+* Specify either `field` or `f`, not both.
+* Specify either `latitude` or `lat`, not both.
+* Specify either `longitude` or `lng`, not both.
+* Supplying both aliases for the same parameter returns `400 Bad Request`.
+* Sending a latitude without a longitude or a longitude without a latitude returns `400 Bad Request`.
 
 ### Headers
 
@@ -480,6 +486,7 @@ the language header.
 `/search?q=cormorant` with `Accept-Language: es-MX, en-US;q=0.8` searches
 Spanish and English common names, plus scientific names.
 
+`/search?q=cormorant&lat=37.7749&lng=-122.4194` searches for cormorants around San Francisco. Results are filtered by known range presence at the exact coordinate; taxa that are not present near the coordinates are not returned.
 
 ### Response Example
 

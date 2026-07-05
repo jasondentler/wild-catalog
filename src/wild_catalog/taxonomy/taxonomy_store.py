@@ -147,6 +147,41 @@ class SQLiteTaxonomyStore:
         ).fetchall()
         return {str(row[0]): int(row[1]) for row in rows}
 
+    def get_taxon_ids_with_present_descendants(
+        self,
+        taxon_ids: Iterable[int],
+        present_taxon_ids: Iterable[int],
+    ) -> set[int]:
+        requested_taxon_ids = sorted(set(taxon_ids))
+        requested_present_taxon_ids = sorted(set(present_taxon_ids))
+        if not requested_taxon_ids or not requested_present_taxon_ids:
+            return set()
+
+        present_placeholders = ", ".join("?" for _ in requested_present_taxon_ids)
+        requested_placeholders = ", ".join("?" for _ in requested_taxon_ids)
+        rows = self._get_connection().execute(
+            f"""
+            WITH RECURSIVE present_lineage AS (
+                SELECT taxon_id, parent_taxon_id
+                FROM taxonomy_taxa
+                WHERE taxon_id IN ({present_placeholders})
+
+                UNION
+
+                SELECT parent.taxon_id, parent.parent_taxon_id
+                FROM taxonomy_taxa parent
+                JOIN present_lineage child
+                  ON parent.taxon_id = child.parent_taxon_id
+            )
+            SELECT DISTINCT taxon_id
+            FROM present_lineage
+            WHERE taxon_id IN ({requested_placeholders})
+            """,
+            (*requested_present_taxon_ids, *requested_taxon_ids),
+        ).fetchall()
+
+        return {int(row[0]) for row in rows}
+
     def search_scientific_names(
         self,
         query: str,

@@ -2,6 +2,7 @@ import sqlite3
 import zipfile
 from contextlib import closing
 
+from wild_catalog.core.types import GpsCoordinates
 from wild_catalog.identify_pipeline.prediction import Prediction
 from wild_catalog.taxonomy import (
     SEARCH_RESULT_LIMIT,
@@ -553,6 +554,126 @@ def test_taxonomy_service_search_limits_results_to_top_twenty(tmp_path) -> None:
         )
 
     assert len(results) == SEARCH_RESULT_LIMIT
+
+
+def test_taxonomy_service_search_gps_filter_keeps_present_species(tmp_path) -> None:
+    archive_path = tmp_path / "bird-taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_bird_taxonomy_archive(archive_path)
+    import_taxonomy_archive(database_path, archive_path, languages=("en-US",))
+    range_prior_service = _FakeRangePriorService({9744})
+    gps_coordinates = GpsCoordinates(latitude=29.5, longitude=-94.5)
+
+    with TaxonomyService(
+        SQLiteTaxonomyStore(database_path),
+        range_prior_service=range_prior_service,
+    ) as service:
+        results = service.search(
+            "Red-winged",
+            field="common",
+            language_preferences=("en-US",),
+            gps_coordinates=gps_coordinates,
+        )
+
+    assert len(results) == 1
+    assert results[0].taxonomy[-1] == "phoeniceus"
+    assert range_prior_service.calls == [gps_coordinates]
+
+
+def test_taxonomy_service_search_gps_filter_omits_absent_species(tmp_path) -> None:
+    archive_path = tmp_path / "bird-taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_bird_taxonomy_archive(archive_path)
+    import_taxonomy_archive(database_path, archive_path, languages=("en-US",))
+
+    with TaxonomyService(
+        SQLiteTaxonomyStore(database_path),
+        range_prior_service=_FakeRangePriorService(set()),
+    ) as service:
+        results = service.search(
+            "Red-winged",
+            field="common",
+            language_preferences=("en-US",),
+            gps_coordinates=GpsCoordinates(latitude=29.5, longitude=-94.5),
+        )
+
+    assert results == ()
+
+
+def test_taxonomy_service_search_gps_filter_keeps_present_ancestor(tmp_path) -> None:
+    archive_path = tmp_path / "bird-taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_bird_taxonomy_archive(archive_path)
+    import_taxonomy_archive(database_path, archive_path, languages=("en-US",))
+
+    with TaxonomyService(
+        SQLiteTaxonomyStore(database_path),
+        range_prior_service=_FakeRangePriorService({9744}),
+    ) as service:
+        results = service.search(
+            "Agelaius",
+            field="scientific",
+            language_preferences=("en-US",),
+            gps_coordinates=GpsCoordinates(latitude=29.5, longitude=-94.5),
+        )
+
+    assert [result.taxonomy[-1] for result in results] == [
+        "Agelaius",
+        "phoeniceus",
+    ]
+
+
+def test_taxonomy_service_search_gps_filter_omits_absent_ancestor(tmp_path) -> None:
+    archive_path = tmp_path / "bird-taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_bird_taxonomy_archive(archive_path)
+    import_taxonomy_archive(database_path, archive_path, languages=("en-US",))
+
+    with TaxonomyService(
+        SQLiteTaxonomyStore(database_path),
+        range_prior_service=_FakeRangePriorService({999999}),
+    ) as service:
+        results = service.search(
+            "Agelaius",
+            field="scientific",
+            language_preferences=("en-US",),
+            gps_coordinates=GpsCoordinates(latitude=29.5, longitude=-94.5),
+        )
+
+    assert results == ()
+
+
+def test_taxonomy_service_search_applies_result_limit_after_gps_filtering(
+    tmp_path,
+) -> None:
+    archive_path = tmp_path / "many-taxonomy.dwca.zip"
+    database_path = tmp_path / "taxonomy.sqlite"
+    _create_many_search_result_archive(archive_path, count=25)
+    import_taxonomy_archive(database_path, archive_path, languages=("en-US",))
+
+    with TaxonomyService(
+        SQLiteTaxonomyStore(database_path),
+        range_prior_service=_FakeRangePriorService(set(range(1005, 1025))),
+    ) as service:
+        results = service.search(
+            "Searchbird",
+            field="common",
+            language_preferences=("en-US",),
+            gps_coordinates=GpsCoordinates(latitude=29.5, longitude=-94.5),
+        )
+
+    assert len(results) == SEARCH_RESULT_LIMIT
+    assert all(result.taxonomy[-1] not in {"searchbird0", "searchbird1"} for result in results)
+
+
+class _FakeRangePriorService:
+    def __init__(self, present_taxon_ids: set[int]) -> None:
+        self._present_taxon_ids = set(present_taxon_ids)
+        self.calls: list[GpsCoordinates] = []
+
+    def get_present_taxon_ids(self, gps_coordinates: GpsCoordinates) -> set[int]:
+        self.calls.append(gps_coordinates)
+        return set(self._present_taxon_ids)
 
 
 def _create_taxonomy_archive(

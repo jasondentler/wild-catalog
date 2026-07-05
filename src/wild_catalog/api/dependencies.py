@@ -32,7 +32,19 @@ def get_settings() -> Settings:
 @lru_cache(maxsize=1)
 def get_taxonomy_service() -> TaxonomyService:
     settings = get_settings()
-    return TaxonomyService(SQLiteTaxonomyStore(settings.taxonomy_store_database_path))
+    return TaxonomyService(
+        SQLiteTaxonomyStore(settings.taxonomy_store_database_path),
+        range_prior_service=get_range_prior_service(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_range_prior_service() -> SpeciesRangePriorService:
+    settings = get_settings()
+    return SpeciesRangePriorService(
+        settings,
+        store=SQLiteSpeciesRangeStore(settings.range_store_database_path),
+    )
 
 
 @lru_cache(maxsize=1)

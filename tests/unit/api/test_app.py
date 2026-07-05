@@ -8,10 +8,12 @@ from wild_catalog.api import app as app_module
 from wild_catalog.api.app import app
 from wild_catalog.api.dependencies import (
     get_identify_pipeline,
+    get_range_prior_service,
     get_settings,
     get_taxonomy_service,
 )
 from wild_catalog.core.settings import Settings
+from wild_catalog.core.types import GpsCoordinates
 from wild_catalog.identify_pipeline.identify_result import IdentifyResult
 from wild_catalog.taxonomy import TaxonomySearchResult
 
@@ -31,9 +33,11 @@ def _use_default_upload_limit(monkeypatch: pytest.MonkeyPatch):
     )
     get_settings.cache_clear()
     get_identify_pipeline.cache_clear()
+    get_range_prior_service.cache_clear()
     app.middleware_stack = None
     yield
     get_identify_pipeline.cache_clear()
+    get_range_prior_service.cache_clear()
     get_settings.cache_clear()
     app.middleware_stack = None
 
@@ -215,10 +219,19 @@ def test_identify_openapi_includes_upload_content_types() -> None:
 
 class DummyTaxonomyService:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, str | None, tuple[str, ...]]] = []
+        self.calls: list[
+            tuple[str, str | None, tuple[str, ...], GpsCoordinates | None]
+        ] = []
 
-    def search(self, query, *, field=None, language_preferences=("en-US",)):
-        self.calls.append((query, field, language_preferences))
+    def search(
+        self,
+        query,
+        *,
+        field=None,
+        language_preferences=("en-US",),
+        gps_coordinates=None,
+    ):
+        self.calls.append((query, field, language_preferences, gps_coordinates))
         if query.lower() == "missing":
             return ()
 
@@ -256,7 +269,7 @@ def test_search_endpoint_uses_query_and_accept_language_preferences() -> None:
             }
         ],
     }
-    assert service.calls == [("osprey", None, ("es-MX", "en-US"))]
+    assert service.calls == [("osprey", None, ("es-MX", "en-US"), None)]
 
 
 def test_search_endpoint_supports_aliases_and_field_filter() -> None:
@@ -270,7 +283,31 @@ def test_search_endpoint_supports_aliases_and_field_filter() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert service.calls == [("Corvidae", "scientific", ("en-US",))]
+    assert service.calls == [("Corvidae", "scientific", ("en-US",), None)]
+
+
+def test_search_endpoint_accepts_gps_aliases() -> None:
+    service = DummyTaxonomyService()
+    client = TestClient(app)
+    app.dependency_overrides[get_taxonomy_service] = lambda: service
+
+    try:
+        response = client.get(
+            "/search",
+            params={"q": "cormorant", "lat": "37.7749", "lng": "-122.4194"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert service.calls == [
+        (
+            "cormorant",
+            None,
+            ("en-US",),
+            GpsCoordinates(latitude=37.7749, longitude=-122.4194),
+        )
+    ]
 
 
 def test_search_endpoint_returns_empty_results() -> None:
@@ -285,7 +322,7 @@ def test_search_endpoint_returns_empty_results() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"total_items": 0, "items": []}
-    assert service.calls == [("missing", "common", ("en-US",))]
+    assert service.calls == [("missing", "common", ("en-US",), None)]
 
 
 @pytest.mark.parametrize(
@@ -293,6 +330,13 @@ def test_search_endpoint_returns_empty_results() -> None:
     [
         {"query": "osprey", "q": "hawk"},
         {"query": "osprey", "field": "common", "f": "scientific"},
+        {"query": "osprey", "latitude": "1.0", "lat": "2.0", "longitude": "3.0"},
+        {"query": "osprey", "latitude": "1.0", "longitude": "3.0", "lng": "4.0"},
+        {"query": "osprey", "latitude": "1.0"},
+        {"query": "osprey", "longitude": "1.0"},
+        {"query": "osprey", "latitude": "north", "longitude": "1.0"},
+        {"query": "osprey", "latitude": "91.0", "longitude": "1.0"},
+        {"query": "osprey", "latitude": "1.0", "longitude": "181.0"},
         {},
         {"query": "   "},
         {"query": "osprey", "field": "invalid"},
@@ -343,6 +387,10 @@ def test_search_openapi_includes_parameters_and_response_schema() -> None:
     assert ("q", "query") in parameters
     assert ("field", "query") in parameters
     assert ("f", "query") in parameters
+    assert ("latitude", "query") in parameters
+    assert ("lat", "query") in parameters
+    assert ("longitude", "query") in parameters
+    assert ("lng", "query") in parameters
     assert ("accept-language", "header") in parameters
     assert "top 20 matches" in search_operation["description"]
     assert search_operation["responses"]["200"]["content"]["application/json"][

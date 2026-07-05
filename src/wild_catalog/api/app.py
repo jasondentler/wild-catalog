@@ -36,6 +36,7 @@ from wild_catalog.core.errors import (
     PayloadTooLargeError,
 )
 from wild_catalog.core.settings import Settings
+from wild_catalog.core.types import GpsCoordinates
 from wild_catalog.identify_pipeline.identify_command import IdentifyCommand
 from wild_catalog.identify_pipeline.identify_pipeline import IdentifyPipeline
 from wild_catalog.range_data import import_inaturalist_open_range_data_if_missing
@@ -130,6 +131,38 @@ def search(
         SearchField | None,
         Query(description="Alias for field."),
     ] = None,
+    latitude: Annotated[
+        float | None,
+        Query(
+            description="GPS latitude used to filter results by known range presence.",
+            ge=-90,
+            le=90,
+        ),
+    ] = None,
+    lat: Annotated[
+        float | None,
+        Query(
+            description="Alias for latitude.",
+            ge=-90,
+            le=90,
+        ),
+    ] = None,
+    longitude: Annotated[
+        float | None,
+        Query(
+            description="GPS longitude used to filter results by known range presence.",
+            ge=-180,
+            le=180,
+        ),
+    ] = None,
+    lng: Annotated[
+        float | None,
+        Query(
+            description="Alias for longitude.",
+            ge=-180,
+            le=180,
+        ),
+    ] = None,
     accept_language: Annotated[
         str | None,
         Header(
@@ -146,6 +179,12 @@ def search(
 
     search_query = query if query is not None else q
     search_field = field if field is not None else f
+    gps_coordinates = _resolve_search_gps_coordinates(
+        latitude=latitude,
+        lat=lat,
+        longitude=longitude,
+        lng=lng,
+    )
     if search_query is None or not search_query.strip():
         raise BadRequestError("Search query is required.")
 
@@ -157,6 +196,7 @@ def search(
         search_query,
         field=search_field,
         language_preferences=language_preferences,
+        gps_coordinates=gps_coordinates,
     )
 
     items = [
@@ -168,6 +208,34 @@ def search(
         for result in results
     ]
     return TaxonomySearchResponse(total_items=len(items), items=items)
+
+
+def _resolve_search_gps_coordinates(
+    *,
+    latitude: float | None,
+    lat: float | None,
+    longitude: float | None,
+    lng: float | None,
+) -> GpsCoordinates | None:
+    if latitude is not None and lat is not None:
+        raise BadRequestError("Specify either latitude or lat, not both.")
+
+    if longitude is not None and lng is not None:
+        raise BadRequestError("Specify either longitude or lng, not both.")
+
+    resolved_latitude = latitude if latitude is not None else lat
+    resolved_longitude = longitude if longitude is not None else lng
+
+    if (resolved_latitude is None) != (resolved_longitude is None):
+        raise BadRequestError("Specify both latitude and longitude, or neither.")
+
+    if resolved_latitude is None or resolved_longitude is None:
+        return None
+
+    return GpsCoordinates(
+        latitude=resolved_latitude,
+        longitude=resolved_longitude,
+    )
 
 
 @app.post(

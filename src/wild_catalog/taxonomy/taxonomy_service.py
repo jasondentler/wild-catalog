@@ -5,7 +5,9 @@ from wild_catalog.core.taxonomy_name_normalization import (
     capitalize_words,
     normalize_scientific_names,
 )
+from wild_catalog.core.types import GpsCoordinates
 from wild_catalog.identify_pipeline.prediction import Prediction
+from wild_catalog.range_data.species_range_prior_service import SpeciesRangePriorService
 from wild_catalog.taxonomy.taxonomy_store import SQLiteTaxonomyStore, TaxonLineageEntry
 
 SEARCH_RESULT_LIMIT = 20
@@ -21,8 +23,14 @@ class TaxonomySearchResult:
 
 
 class TaxonomyService:
-    def __init__(self, store: SQLiteTaxonomyStore) -> None:
+    def __init__(
+        self,
+        store: SQLiteTaxonomyStore,
+        *,
+        range_prior_service: SpeciesRangePriorService | None = None,
+    ) -> None:
         self._store = store
+        self._range_prior_service = range_prior_service
 
     def enrich_predictions(
         self,
@@ -74,6 +82,7 @@ class TaxonomyService:
         *,
         field: SearchField | None = None,
         language_preferences: tuple[str, ...] = ("en-US",),
+        gps_coordinates: GpsCoordinates | None = None,
     ) -> tuple[TaxonomySearchResult, ...]:
         normalized_query = query.strip()
         if not normalized_query:
@@ -104,22 +113,34 @@ class TaxonomyService:
                 )
             )
 
-        results = []
-        seen_accepted_taxon_ids = set()
         ranked_matches = sorted(
             matches,
             key=lambda item: (item.score, item.matched_name.lower(), item.taxon_id),
         )
+        ranked_accepted_taxon_ids = []
+        seen_accepted_taxon_ids = set()
         for match in ranked_matches:
             accepted_taxon_id = self._store.get_accepted_taxon_id(match.taxon_id)
             if accepted_taxon_id in seen_accepted_taxon_ids:
+                continue
+
+            seen_accepted_taxon_ids.add(accepted_taxon_id)
+            ranked_accepted_taxon_ids.append(accepted_taxon_id)
+
+        allowed_taxon_ids = self._gps_filtered_taxon_ids(
+            ranked_accepted_taxon_ids,
+            gps_coordinates,
+        )
+
+        results = []
+        for accepted_taxon_id in ranked_accepted_taxon_ids:
+            if allowed_taxon_ids is not None and accepted_taxon_id not in allowed_taxon_ids:
                 continue
 
             lineage = self._store.get_lineage(accepted_taxon_id)
             if not lineage:
                 continue
 
-            seen_accepted_taxon_ids.add(accepted_taxon_id)
             results.append(
                 self._search_result_from_lineage(
                     lineage,
@@ -131,6 +152,22 @@ class TaxonomyService:
                 break
 
         return tuple(results)
+
+    def _gps_filtered_taxon_ids(
+        self,
+        candidate_taxon_ids: tuple[int, ...] | list[int],
+        gps_coordinates: GpsCoordinates | None,
+    ) -> set[int] | None:
+        if gps_coordinates is None or self._range_prior_service is None:
+            return None
+
+        present_taxon_ids = self._range_prior_service.get_present_taxon_ids(
+            gps_coordinates
+        )
+        return self._store.get_taxon_ids_with_present_descendants(
+            candidate_taxon_ids,
+            present_taxon_ids,
+        )
 
     def close(self) -> None:
         self._store.close()

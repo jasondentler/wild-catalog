@@ -44,7 +44,7 @@ class SpeciesRangePriorService:
                 class_index_id=class_index.id,
             )
 
-        present_taxon_ids = self._get_present_taxon_ids(gps_coordinates)
+        present_taxon_ids = self.get_present_taxon_ids(gps_coordinates)
 
         values = torch.empty(class_count, dtype=torch.float32)
 
@@ -57,7 +57,7 @@ class SpeciesRangePriorService:
             class_index_id=class_index.id,
         )
 
-    def _get_present_taxon_ids(
+    def get_present_taxon_ids(
         self,
         gps_coordinates: GpsCoordinates,
     ) -> set[int]:
